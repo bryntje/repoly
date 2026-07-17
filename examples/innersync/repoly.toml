@@ -1,93 +1,201 @@
-# Example mapping of an Innersync-style multi-root workspace.
-# Place this file at the parent directory of all product repos
-# (the same directory that contains the .code-workspace file).
-#
-# Adjust paths if your checkout layout differs.
+# Innersync multi-repo workspace for repoly
+# Root: ~/Dev/Projects/Github  (sibling of Innersync.code-workspace)
+# Product polyrepos only — not AlphaTradeBot / other unrelated folders.
 schema_version = 1
 
 [workspace]
 name = "innersync"
 
 [context]
+# Always inject platform map + agent rules + informal name aliases
 always = [
   "Innersync-meta/CROSS-REPO-CONTEXT.md",
   "Innersync-meta/AGENTS.md",
+  "Innersync-meta/NAMING-SCHEMA.md",
 ]
 status_doc = "Innersync-meta/CROSS-REPOStatus.md"
+# Large always-docs; raise if you want fuller packs
 max_chars = 48000
+
+# ── Cross-repo docs ─────────────────────────────────────────────────────────
 
 [[repos]]
 id = "meta"
 path = "Innersync-meta"
 role = "meta"
-tags = ["docs", "agents"]
-description = "Cross-repo docs and agent guidelines"
+tags = [
+  "docs",
+  "agents",
+  "meta",
+  "status",
+  "naming",
+  "release",
+  "security",
+]
+description = "Cross-repo docs, status, naming aliases (META) — not product code"
+
+# ── Platform core ───────────────────────────────────────────────────────────
 
 [[repos]]
 id = "core"
 path = "Innersync_Core"
 role = "api"
-tags = ["backend", "payments", "identity", "oauth"]
+tags = [
+  "backend",
+  "api",
+  "core",
+  "fastapi",
+  "payments",
+  "mollie",
+  "identity",
+  "oauth",
+  "auth",
+  "login",
+  "supabase",
+  "webhooks",
+  "telemetry",
+  "vault",
+  "memory",
+  "agents",
+  "hermit",
+]
 depends_on = []
-description = "Core API (FastAPI) + marketing web"
+description = "Core API (api.innersync.tech) + marketing web — payments, /users/me, webhooks, agents proxy"
+
+# ── User-facing apps ────────────────────────────────────────────────────────
 
 [[repos]]
 id = "app"
 path = "innersync-dashboard"
 role = "frontend"
-tags = ["frontend", "reflections", "oauth", "identity"]
+tags = [
+  "frontend",
+  "app",
+  "nextjs",
+  "reflections",
+  "encryption",
+  "oauth",
+  "auth",
+  "login",
+  "identity",
+  "profile",
+  "teams",
+  "vault",
+  "memory",
+  "agents",
+  "grok",
+  "supabase",
+]
 depends_on = ["core", "styling"]
-description = "User-facing Innersync App"
+description = "Innersync App (app.innersync.tech) — reflections, OAuth login, profile, vault, Grok chat"
 
 [[repos]]
 id = "mind"
 path = "alphamind"
 role = "frontend"
-tags = ["ops", "telemetry", "identity"]
+tags = [
+  "frontend",
+  "mind",
+  "ops",
+  "cockpit",
+  "telemetry",
+  "metrics",
+  "railway",
+  "identity",
+  "auth",
+  "login",
+  "supabase",
+  "nextjs",
+]
 depends_on = ["core"]
-description = "Private ops cockpit"
-
-[[repos]]
-id = "alphapy"
-path = "alphapy"
-role = "bot"
-tags = ["discord", "agents", "bot"]
-depends_on = ["core"]
-description = "Discord bot + FastAPI"
-
-[[repos]]
-id = "alphapy_dashboard"
-path = "Alphapy-Dashboard"
-role = "frontend"
-tags = ["guild-admin", "dashboard"]
-depends_on = ["alphapy"]
-description = "Bot control panel"
+description = "Mind cockpit (mind.innersync.tech) — private ops, metrics, Railway/GitHub status"
 
 [[repos]]
 id = "styling"
 path = "Innersync_Styling"
 role = "lib"
-tags = ["ui"]
-description = "Shared UI package"
+tags = ["ui", "styling", "theme", "design", "tokens", "npm", "lib"]
+depends_on = []
+description = "@innersync-tech/innersync-ui — shared UI package (no business logic)"
+
+# ── Alphapy (Discord) ───────────────────────────────────────────────────────
+
+[[repos]]
+id = "alphapy"
+path = "alphapy"
+role = "bot"
+tags = [
+  "discord",
+  "bot",
+  "alphapy",
+  "agents",
+  "railway",
+  "postgres",
+  "fastapi",
+  "link",
+  "identity",
+  "premium",
+  "webhooks",
+]
+depends_on = ["core"]
+description = "Alphapy Discord bot + FastAPI — Railway Postgres hot path; agents/link via Core/Supabase"
+
+[[repos]]
+id = "alphapy_dashboard"
+path = "Alphapy-Dashboard"
+role = "frontend"
+tags = [
+  "frontend",
+  "dashboard",
+  "control-panel",
+  "guild-admin",
+  "alphapy",
+  "railway",
+  "nextjs",
+]
+depends_on = ["alphapy"]
+description = "Alphapy control panel (dashboard.alphapy.innersync.tech) — guild admin + public status"
 
 [[repos]]
 id = "website"
 path = "alphapy-website"
 role = "frontend"
-tags = ["marketing", "checkout", "payments"]
+tags = [
+  "frontend",
+  "marketing",
+  "pricing",
+  "checkout",
+  "payments",
+  "mollie",
+  "discord",
+  "oauth",
+  "nextjs",
+]
 depends_on = ["core"]
-description = "Alphapy pricing / marketing site"
+description = "Alphapy pricing/marketing (pricing.alphapy.innersync.tech) — Discord premium checkout → Core/Mollie"
+
+# ── Docs & Hermit ───────────────────────────────────────────────────────────
 
 [[repos]]
 id = "docs"
 path = "docs"
 role = "docs"
-tags = ["docs", "starlight"]
-description = "Published documentation site"
+tags = ["docs", "starlight", "astro", "documentation"]
+depends_on = []
+description = "Published docs (docs.innersync.tech) — Starlight; Alphapy stubs from upstream"
 
 [[repos]]
 id = "hermit"
 path = "Hermit"
 role = "agent"
-tags = ["hermit", "skills"]
-description = "Hermit agent / skills"
+tags = [
+  "hermit",
+  "skills",
+  "agents",
+  "memory",
+  "vault",
+  "vps",
+  "strategy",
+]
+depends_on = ["core"]
+description = "Hermit agent/skills host — pushes strategic context & memory-tree to Core (not a Discord bot)"

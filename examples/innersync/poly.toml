@@ -1,0 +1,93 @@
+# Example mapping of an Innersync-style multi-root workspace.
+# Place this file at the parent directory of all product repos
+# (the same directory that contains the .code-workspace file).
+#
+# Adjust paths if your checkout layout differs.
+schema_version = 1
+
+[workspace]
+name = "innersync"
+
+[context]
+always = [
+  "Innersync-meta/CROSS-REPO-CONTEXT.md",
+  "Innersync-meta/AGENTS.md",
+]
+status_doc = "Innersync-meta/CROSS-REPOStatus.md"
+max_chars = 48000
+
+[[repos]]
+id = "meta"
+path = "Innersync-meta"
+role = "meta"
+tags = ["docs", "agents"]
+description = "Cross-repo docs and agent guidelines"
+
+[[repos]]
+id = "core"
+path = "Innersync_Core"
+role = "api"
+tags = ["backend", "payments", "identity", "oauth"]
+depends_on = []
+description = "Core API (FastAPI) + marketing web"
+
+[[repos]]
+id = "app"
+path = "innersync-dashboard"
+role = "frontend"
+tags = ["frontend", "reflections", "oauth", "identity"]
+depends_on = ["core", "styling"]
+description = "User-facing Innersync App"
+
+[[repos]]
+id = "mind"
+path = "alphamind"
+role = "frontend"
+tags = ["ops", "telemetry", "identity"]
+depends_on = ["core"]
+description = "Private ops cockpit"
+
+[[repos]]
+id = "alphapy"
+path = "alphapy"
+role = "bot"
+tags = ["discord", "agents", "bot"]
+depends_on = ["core"]
+description = "Discord bot + FastAPI"
+
+[[repos]]
+id = "alphapy_dashboard"
+path = "Alphapy-Dashboard"
+role = "frontend"
+tags = ["guild-admin", "dashboard"]
+depends_on = ["alphapy"]
+description = "Bot control panel"
+
+[[repos]]
+id = "styling"
+path = "Innersync_Styling"
+role = "lib"
+tags = ["ui"]
+description = "Shared UI package"
+
+[[repos]]
+id = "website"
+path = "alphapy-website"
+role = "frontend"
+tags = ["marketing", "checkout", "payments"]
+depends_on = ["core"]
+description = "Alphapy pricing / marketing site"
+
+[[repos]]
+id = "docs"
+path = "docs"
+role = "docs"
+tags = ["docs", "starlight"]
+description = "Published documentation site"
+
+[[repos]]
+id = "hermit"
+path = "Hermit"
+role = "agent"
+tags = ["hermit", "skills"]
+description = "Hermit agent / skills"

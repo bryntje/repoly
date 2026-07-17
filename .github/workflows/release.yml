@@ -101,15 +101,17 @@ jobs:
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          STAGE="dist/${{ matrix.asset_name }}"
-          mkdir -p "$STAGE"
-          cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "$STAGE/repoly.exe"
-          cp README.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "$STAGE/"
-          (cd dist && zip -r "${{ matrix.asset_name }}.zip" "${{ matrix.asset_name }}")
-          (cd dist && sha256sum "${{ matrix.asset_name }}.zip" > "${{ matrix.asset_name }}.zip.sha256" || shasum -a 256 "${{ matrix.asset_name }}.zip" > "${{ matrix.asset_name }}.zip.sha256")
+          $ErrorActionPreference = "Stop"
+          $name = "${{ matrix.asset_name }}"
+          $stage = "dist/$name"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.bin }}" "$stage/repoly.exe"
+          Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE, CHANGELOG.md $stage
+          Compress-Archive -Path $stage -DestinationPath "dist/$name.zip" -Force
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$name.zip").Hash.ToLower()
+          Set-Content -Path "dist/$name.zip.sha256" -Value "$hash  $name.zip" -NoNewline
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

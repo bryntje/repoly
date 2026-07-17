@@ -41,9 +41,7 @@ pub fn expand_token_builtin(token: &str) -> Vec<String> {
         "bug" | "bugs" | "fix" | "hotfix" | "issue" | "issues" => {
             &["bug", "bugs", "fix", "hotfix", "issue", "issues"]
         }
-        "perf" | "performance" | "latency" | "slow" => {
-            &["performance", "perf", "latency", "slow"]
-        }
+        "perf" | "performance" | "latency" | "slow" => &["performance", "perf", "latency", "slow"],
         "telemetry" | "metrics" | "ops" | "cockpit" => {
             &["telemetry", "metrics", "ops", "mind", "railway"]
         }
@@ -380,11 +378,7 @@ mod tests {
     #[test]
     fn workspace_synonym_groups_merge() {
         let mut w = ws();
-        w.ranking.synonym_groups = vec![vec![
-            "billing".into(),
-            "invoice".into(),
-            "stripe".into(),
-        ]];
+        w.ranking.synonym_groups = vec![vec!["billing".into(), "invoice".into(), "stripe".into()]];
         // tag "payments" on core won't hit; add stripe tag via group → need a repo with stripe tag
         w.repos[0].tags.push("stripe".into());
         let ranked = rank_repos(&w, "invoice");

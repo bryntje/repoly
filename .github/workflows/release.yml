@@ -49,11 +49,13 @@ jobs:
           #   asset_name: repoly-aarch64-unknown-linux-gnu
           #   bin: repoly
           #   cross: true
+          # Both macOS targets build on macos-latest (arm64). x86_64 is
+          # cross-compiled — avoids scarce macos-13 (Intel) runners that queue forever.
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: repoly-aarch64-apple-darwin
             bin: repoly
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: repoly-x86_64-apple-darwin
             bin: repoly
@@ -79,7 +81,9 @@ jobs:
         if: matrix.cross
         run: cargo install cross --locked
 
-      - name: Build (native)
+      # cargo --target works natively on macOS for both arm64 and x86_64
+      # (Apple Silicon can emit x86_64 without the `cross` tool).
+      - name: Build (native / macOS cross)
         if: ${{ !matrix.cross }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 

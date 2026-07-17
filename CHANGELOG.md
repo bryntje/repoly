@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-17
+
+Security **layer 2**: path confinement, command policy, resource limits, richer context skips, optional audit. Generic for any polyrepo — no product-specific defaults.
+
+### Added
+
+- **`src/policy.rs`** — shared path confinement, exec bin policy, skip globs, audit helper
+- **Commit path confinement** — pathspecs must resolve under the target repo root (always on)
+- **MCP default bin deny** — with `--allow-exec`, sensitive basenames blocked (`sudo`, `dd`, `mkfs*`, `shutdown`, …)
+- **`--exec-bin-allow` / `--exec-bin-deny` / `--no-default-exec-deny`**
+- **Shell vs bin policy** — `shell=true` rejected while any bin policy (including default deny) is active
+- **`--exec-timeout-secs` / `--exec-max-output-bytes`** — kill hung MCP children; cap stdout/stderr (JSON: `timed_out`, `*_truncated`)
+- **`--audit-log PATH`** — JSONL events for `exec` / `run` / `commit`
+- **`[policy]` in `repoly.toml`** (optional): `skip_globs`, `use_builtin_secret_filters`, `exec_timeout_secs`, `exec_max_output_bytes`, `audit_log`
+- Session flags override workspace `[policy]` when both are set
+- **SECURITY.md** — threat model, layer 1 vs 2, residual risk, recommended host profile
+- Tests for deny/allow, shell block, timeout, truncation, audit, path escape, skip globs
+
+### Changed
+
+- MCP `run` uses capture limits path (sequential with session opts)
+- `docs/mcp.md` / README — hardened agent examples; shell requires inactive bin policy
+
+### Notes
+
+- Default bin deny on MCP `--allow-exec` is a **behavior change** from 0.1.x (stricter). Opt out with `--no-default-exec-deny`.
+- Plain CLI `repoly exec` remains unrestricted (human threat model).
+- Recommended agent host: `--allow-exec` + `--exec-repos` + `--exec-bin-allow` + timeout/max-output + optional audit.
+
 ## [0.1.1] — 2026-07-17
 
 ### Fixed
@@ -50,6 +79,7 @@ First **public** release of `repoly` (internal dogfood history through 0.10.x is
 - Binary distribution: GitHub Releases on `v*` tags (macOS arm/x64, Linux x64, Windows x64).
 - crates.io: `cargo install repoly` after publish.
 
-[Unreleased]: https://github.com/bryntje/repoly/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/bryntje/repoly/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/bryntje/repoly/releases/tag/v0.2.0
 [0.1.1]: https://github.com/bryntje/repoly/releases/tag/v0.1.1
 [0.1.0]: https://github.com/bryntje/repoly/releases/tag/v0.1.0

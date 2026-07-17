@@ -401,6 +401,7 @@ mod tests {
             root: PathBuf::from("/tmp/t"),
             config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
+            policy: Default::default(),
             repos: vec![
                 RepoEntry {
                     id: "core".into(),

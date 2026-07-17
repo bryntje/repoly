@@ -1,10 +1,11 @@
 //! Safe git commit helper scoped to repoly workspace repos.
 
 use crate::config::{RepoEntry, Workspace};
+use crate::policy;
 use crate::run;
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone)]
@@ -83,13 +84,21 @@ pub fn commit_one(
             }
         }
     } else if !opts.paths.is_empty() {
+        // Confine pathspecs to the repo root (always-on layer 2).
+        let confined = match confine_pathspecs(&path, &opts.paths) {
+            Ok(p) => p,
+            Err(e) => {
+                result.error = Some(e.to_string());
+                return Ok(result);
+            }
+        };
         if opts.dry_run {
             result
                 .stdout
-                .push_str(&format!("[dry-run] git add -- {}\n", opts.paths.join(" ")));
+                .push_str(&format!("[dry-run] git add -- {}\n", confined.join(" ")));
         } else {
             let mut args = vec!["add".to_string(), "--".to_string()];
-            args.extend(opts.paths.iter().cloned());
+            args.extend(confined);
             let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             let (code, so, se) = git(&path, &args_ref)?;
             result.stdout.push_str(&so);
@@ -191,6 +200,34 @@ fn validate_opts(opts: &CommitOpts) -> Result<()> {
         bail!("use either --all or pathspecs, not both");
     }
     Ok(())
+}
+
+/// Validate pathspecs stay under `repo_root`; return paths relative to the repo for `git add`.
+fn confine_pathspecs(repo_root: &Path, paths: &[String]) -> Result<Vec<String>> {
+    let mut out = Vec::with_capacity(paths.len());
+    for raw in paths {
+        let user = Path::new(raw);
+        let abs = policy::ensure_under_root(repo_root, user)?;
+        let rel = abs.strip_prefix(
+            repo_root
+                .canonicalize()
+                .unwrap_or_else(|_| repo_root.to_path_buf()),
+        );
+        let for_git = match rel {
+            Ok(r) if !r.as_os_str().is_empty() => r.to_path_buf(),
+            Ok(_) => PathBuf::from("."),
+            // Fall back to original relative form if strip fails but ensure passed
+            Err(_) => {
+                if user.is_absolute() {
+                    abs.clone()
+                } else {
+                    user.to_path_buf()
+                }
+            }
+        };
+        out.push(for_git.to_string_lossy().into_owned());
+    }
+    Ok(out)
 }
 
 fn has_staged_changes(path: &Path) -> Result<bool> {

@@ -6,7 +6,8 @@ use crate::commit;
 use crate::config::{find_config, load_config, Workspace};
 use crate::context;
 use crate::plan;
-use crate::run;
+use crate::policy::{self, ExecBinPolicy};
+use crate::run::{self, CaptureOpts};
 use crate::status;
 use anyhow::{Context as _, Result};
 use rmcp::{
@@ -33,6 +34,18 @@ pub struct McpOptions {
     pub exec_repos: Option<Vec<String>>,
     /// Allow `exec` with shell=true (`sh -c`). Requires allow_exec.
     pub allow_shell: bool,
+    /// Optional argv[0] basename allowlist.
+    pub exec_bin_allow: Option<Vec<String>>,
+    /// Extra argv[0] basenames to deny (merged with defaults unless no_default_exec_deny).
+    pub exec_bin_deny: Option<Vec<String>>,
+    /// Skip built-in sensitive binary deny list.
+    pub no_default_exec_deny: bool,
+    /// Capture timeout (seconds). `Some(0)` = unlimited; `None` = use workspace [policy] if set.
+    pub exec_timeout_secs: Option<u64>,
+    /// Max bytes per stream. `Some(0)` = unlimited; `None` = use workspace [policy] if set.
+    pub exec_max_output_bytes: Option<usize>,
+    /// Audit log path from CLI (overrides [policy].audit_log).
+    pub audit_log: Option<PathBuf>,
 }
 
 /// Run the MCP server on stdio until the client disconnects.
@@ -50,11 +63,21 @@ pub async fn serve(opts: McpOptions) -> Result<()> {
             } else {
                 eprintln!(" (all workspace repos)");
             }
+            let use_default = !opts.no_default_exec_deny;
+            if use_default {
+                eprintln!("  bin deny: default sensitive list (sudo, dd, …); override with --exec-bin-deny / --no-default-exec-deny");
+            }
+            if let Some(ref allow) = opts.exec_bin_allow {
+                eprintln!("  bin allow: {}", allow.join(", "));
+            }
+            if let Some(ref deny) = opts.exec_bin_deny {
+                eprintln!("  bin deny extra: {}", deny.join(", "));
+            }
         } else {
             eprintln!("  exec: disabled (pass --allow-exec to enable mutation tools)");
         }
         if opts.allow_shell {
-            eprintln!("  shell: enabled");
+            eprintln!("  shell: requested (only works if no bin allow/deny policy is active)");
         }
         eprintln!("  docs: https://github.com/bryntje/repoly/blob/master/docs/mcp.md");
         eprintln!();
@@ -80,15 +103,24 @@ pub struct RepolyMcp {
     /// Allowlist of repo ids for exec; None = all workspace repos when allow_exec.
     exec_repos: Option<HashSet<String>>,
     allow_shell: bool,
+    /// Command basename policy (layer 2).
+    bin_policy: ExecBinPolicy,
+    /// Capture limits for exec/run (resolved flags + workspace policy).
+    capture: CaptureOpts,
+    /// Optional audit log path.
+    audit_log: Option<PathBuf>,
 }
 
 impl RepolyMcp {
     pub fn new(opts: McpOptions) -> Result<Self> {
-        if let Some(ref p) = opts.config {
-            let _ = load_config(p).with_context(|| format!("loading {}", p.display()))?;
-        } else if let Ok(p) = find_config() {
-            let _ = load_config(&p).with_context(|| format!("loading {}", p.display()))?;
-        }
+        let config_path = opts.config.clone().or_else(|| find_config().ok());
+        let ws_policy = if let Some(ref p) = config_path {
+            load_config(p)
+                .with_context(|| format!("loading {}", p.display()))?
+                .policy
+        } else {
+            Default::default()
+        };
 
         if opts.exec_repos.is_some() && !opts.allow_exec {
             anyhow::bail!("--exec-repos requires --allow-exec");
@@ -96,16 +128,100 @@ impl RepolyMcp {
         if opts.allow_shell && !opts.allow_exec {
             anyhow::bail!("--allow-shell requires --allow-exec");
         }
+        if (opts.exec_bin_allow.is_some()
+            || opts.exec_bin_deny.is_some()
+            || opts.no_default_exec_deny
+            || opts.exec_timeout_secs.is_some()
+            || opts.exec_max_output_bytes.is_some()
+            || opts.audit_log.is_some())
+            && !opts.allow_exec
+        {
+            // audit_log and resource limits only matter with exec; allow reading them only if exec
+            // is on — except audit could log commits only with allow_exec anyway.
+            if opts.exec_bin_allow.is_some()
+                || opts.exec_bin_deny.is_some()
+                || opts.no_default_exec_deny
+            {
+                anyhow::bail!("exec bin policy flags require --allow-exec");
+            }
+        }
 
         let exec_repos = opts.exec_repos.map(|v| v.into_iter().collect());
 
+        // When exec is disabled, keep empty policy. When enabled, apply default deny
+        // unless --no-default-exec-deny, plus optional allow/deny lists.
+        let bin_policy = if opts.allow_exec {
+            ExecBinPolicy::from_parts(
+                opts.exec_bin_allow,
+                opts.exec_bin_deny,
+                !opts.no_default_exec_deny,
+            )
+        } else {
+            ExecBinPolicy::empty()
+        };
+
+        // Flags win over [policy]; 0 means unlimited.
+        let timeout_secs = match opts.exec_timeout_secs {
+            Some(0) => None,
+            Some(n) => Some(n),
+            None => ws_policy.exec_timeout_secs.filter(|&n| n > 0),
+        };
+        let max_output_bytes = match opts.exec_max_output_bytes {
+            Some(0) => None,
+            Some(n) => Some(n),
+            None => ws_policy.exec_max_output_bytes.filter(|&n| n > 0),
+        };
+        let capture = CaptureOpts {
+            timeout_secs,
+            max_output_bytes,
+        };
+
+        let audit_log = opts.audit_log.or_else(|| {
+            ws_policy.audit_log.as_ref().map(|p| {
+                let path = PathBuf::from(p);
+                if path.is_absolute() {
+                    path
+                } else if let Some(ref cfg) = config_path {
+                    cfg.parent().map(|d| d.join(&path)).unwrap_or(path)
+                } else {
+                    path
+                }
+            })
+        });
+
+        if opts.allow_shell && bin_policy.is_active() {
+            eprintln!(
+                "repoly mcp: warning: --allow-shell is set but bin policy is active \
+                 (default deny and/or custom lists); shell=true tool calls will be rejected. \
+                 Use argv commands, or pass --no-default-exec-deny and clear bin lists."
+            );
+        }
+
         Ok(Self {
             tool_router: Self::tool_router(),
-            config_path: opts.config.or_else(|| find_config().ok()),
+            config_path,
             allow_exec: opts.allow_exec,
             exec_repos,
             allow_shell: opts.allow_shell,
+            bin_policy,
+            capture,
+            audit_log,
         })
+    }
+
+    fn audit(&self, tool: &str, event: serde_json::Value) {
+        let Some(ref path) = self.audit_log else {
+            return;
+        };
+        let mut full = event;
+        if let Some(obj) = full.as_object_mut() {
+            obj.insert(
+                "ts".into(),
+                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+            );
+            obj.insert("tool".into(), serde_json::json!(tool));
+        }
+        policy::append_audit_log(path, &full);
     }
 
     fn load_ws(&self) -> Result<Workspace, McpError> {
@@ -163,7 +279,20 @@ impl RepolyMcp {
                 None,
             ));
         }
+        self.bin_policy
+            .check_shell_allowed(want_shell)
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
         Ok(run::LaunchMode::from_shell_flag(want_shell))
+    }
+
+    fn check_command_policy(&self, cmd: &[String], want_shell: bool) -> Result<(), McpError> {
+        self.resolve_shell_mode(want_shell)?;
+        if !want_shell {
+            self.bin_policy
+                .check_argv(cmd)
+                .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+        }
+        Ok(())
     }
 }
 
@@ -453,16 +582,28 @@ impl RepolyMcp {
         }
 
         let want_shell = args.shell.unwrap_or(false);
-        let mode = self.resolve_shell_mode(want_shell)?;
+        self.check_command_policy(&args.command, want_shell)?;
+        let mode = run::LaunchMode::from_shell_flag(want_shell);
 
         let ws = self.load_ws()?;
         let entry = run::resolve_repo(&ws, &args.repo)
             .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
 
         // Capture mode: MCP owns stdio; never inherit.
-        let result = run::exec_capture(&ws, entry, &args.command, mode)
+        let result = run::exec_capture_opts(&ws, entry, &args.command, mode, self.capture)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
+        self.audit(
+            "exec",
+            serde_json::json!({
+                "repo": args.repo,
+                "argv": args.command,
+                "shell": want_shell,
+                "exit_code": result.code(),
+                "ok": result.success(),
+                "timed_out": result.timed_out,
+            }),
+        );
         let out = serde_json::json!({
             "repo": result.repo_id,
             "path": result.path,
@@ -470,6 +611,9 @@ impl RepolyMcp {
             "shell": want_shell,
             "exit_code": result.code(),
             "success": result.success(),
+            "timed_out": result.timed_out,
+            "stdout_truncated": result.stdout_truncated,
+            "stderr_truncated": result.stderr_truncated,
             "error": result.error,
             "stdout": result.stdout.unwrap_or_default(),
             "stderr": result.stderr.unwrap_or_default(),
@@ -491,7 +635,8 @@ impl RepolyMcp {
         }
 
         let want_shell = args.shell.unwrap_or(false);
-        let mode = self.resolve_shell_mode(want_shell)?;
+        self.check_command_policy(&args.command, want_shell)?;
+        let mode = run::LaunchMode::from_shell_flag(want_shell);
         let parallel = args.parallel.unwrap_or(false);
         let continue_on_error = args.continue_on_error.unwrap_or(false);
 
@@ -509,32 +654,19 @@ impl RepolyMcp {
             self.assert_exec_allowed(&repo.id)?;
         }
 
-        // MCP must capture stdio. Sequential: exec_capture loop.
-        // Parallel: existing run_many parallel path already captures.
-        let results = if parallel && selected.len() > 1 {
-            run::run_many(
-                &ws,
-                &selected,
-                &args.command,
-                true,
-                continue_on_error,
-                false,
-                mode,
-            )
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?
-        } else {
-            let mut out = Vec::new();
-            for repo in &selected {
-                let r = run::exec_capture(&ws, repo, &args.command, mode)
-                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-                let ok = r.success();
-                out.push(r);
-                if !ok && !continue_on_error {
-                    break;
-                }
+        // MCP always captures with session limits. Parallel still sequential under limits
+        // for predictable timeout/kill behaviour (same process-group constraints).
+        let _ = parallel; // accepted for API compat; capture path is sequential with opts
+        let mut results = Vec::new();
+        for repo in &selected {
+            let r = run::exec_capture_opts(&ws, repo, &args.command, mode, self.capture)
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            let ok = r.success();
+            results.push(r);
+            if !ok && !continue_on_error {
+                break;
             }
-            out
-        };
+        }
 
         let rows: Vec<_> = results
             .iter()
@@ -544,6 +676,9 @@ impl RepolyMcp {
                     "path": r.path,
                     "exit_code": r.code(),
                     "success": r.success(),
+                    "timed_out": r.timed_out,
+                    "stdout_truncated": r.stdout_truncated,
+                    "stderr_truncated": r.stderr_truncated,
                     "error": r.error,
                     "stdout": r.stdout.clone().unwrap_or_default(),
                     "stderr": r.stderr.clone().unwrap_or_default(),
@@ -569,12 +704,21 @@ impl RepolyMcp {
             "repos": selected.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
             "results": rows,
         });
+        self.audit(
+            "run",
+            serde_json::json!({
+                "repos": selected.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
+                "argv": args.command,
+                "shell": want_shell,
+                "summary": summary,
+            }),
+        );
         Ok(serde_json::to_string_pretty(&out).unwrap_or_default())
     }
 
     #[tool(
         name = "commit",
-        description = "Create a git commit in one workspace repo. Requires --allow-exec (and --exec-repos allowlist if set). Prefer this over exec for commits: safer defaults, no shell, skips when nothing staged unless all=true."
+        description = "Create a git commit in one workspace repo. Requires --allow-exec (and --exec-repos allowlist if set). Prefer this over exec for commits: safer defaults, no shell, pathspecs confined to repo root, skips when nothing staged unless all=true."
     )]
     async fn commit_cmd(
         &self,
@@ -599,6 +743,15 @@ impl RepolyMcp {
         let result = commit::commit_one(&ws, entry, &opts)
             .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
 
+        self.audit(
+            "commit",
+            serde_json::json!({
+                "repo": args.repo,
+                "ok": result.success,
+                "skipped": result.skipped,
+                "commit_sha": result.commit_sha,
+            }),
+        );
         Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
     }
 }
@@ -615,14 +768,44 @@ impl ServerHandler for RepolyMcp {
                 }
                 None => "all workspace repos".into(),
             };
-            let shell = if self.allow_shell {
+            let shell = if self.allow_shell && !self.bin_policy.is_active() {
                 "shell=true allowed (sh -c; use sparingly)"
+            } else if self.allow_shell && self.bin_policy.is_active() {
+                "shell requested but blocked by bin policy"
             } else {
                 "shell=false only (argv; safer)"
             };
-            format!("exec/run/commit ENABLED ({repos}; {shell}).")
+            let bins = if let Some(ref allow) = self.bin_policy.allow {
+                let mut list: Vec<_> = allow.iter().cloned().collect();
+                list.sort();
+                format!("bin allow: {}", list.join(", "))
+            } else if !self.bin_policy.deny.is_empty() {
+                format!(
+                    "bin deny active ({} names; default sensitive list and/or custom)",
+                    self.bin_policy.deny.len()
+                )
+            } else {
+                "bin policy: none".into()
+            };
+            let limits = match (self.capture.timeout_secs, self.capture.max_output_bytes) {
+                (None, None) => "no capture limits".into(),
+                (t, m) => format!(
+                    "timeout={}s max_output={}",
+                    t.map(|n| n.to_string()).unwrap_or_else(|| "∞".into()),
+                    m.map(|n| n.to_string()).unwrap_or_else(|| "∞".into())
+                ),
+            };
+            let audit = if self.audit_log.is_some() {
+                "audit=on"
+            } else {
+                "audit=off"
+            };
+            format!(
+                "exec/run/commit ENABLED ({repos}; {shell}; {bins}; {limits}; {audit}). \
+                 Commits confine pathspecs to each repo root."
+            )
         } else {
-            "exec/run/commit DISABLED (start with `repoly mcp --allow-exec`[, `--exec-repos a,b`][, `--allow-shell`])."
+            "exec/run/commit DISABLED (start with `repoly mcp --allow-exec`[, `--exec-repos a,b`][, bin policy flags])."
                 .into()
         };
 

@@ -360,12 +360,14 @@ fn mcp_shell_requires_allow_shell() {
     );
     drop(s);
 
+    // Shell only works when bin policy is inactive (no default deny, no custom lists).
     let mut s = McpSession::start(&[
         "mcp",
         "--config",
         cfg.to_str().unwrap(),
         "--allow-exec",
         "--allow-shell",
+        "--no-default-exec-deny",
         "--exec-repos",
         "api",
     ]);
@@ -383,6 +385,194 @@ fn mcp_shell_requires_allow_shell() {
     assert!(
         v["stdout"].as_str().unwrap_or("").contains("shell-ok"),
         "{v}"
+    );
+}
+
+#[test]
+fn mcp_default_deny_blocks_sudo() {
+    let fx = WorkspaceFixture::basic();
+    let cfg = fx.config();
+    let mut s = McpSession::start(&[
+        "mcp",
+        "--config",
+        cfg.to_str().unwrap(),
+        "--allow-exec",
+        "--exec-repos",
+        "api",
+    ]);
+    s.initialize();
+    let resp = s.call_tool(
+        "exec",
+        json!({
+            "repo": "api",
+            "command": ["sudo", "true"]
+        }),
+    );
+    let msg = McpSession::tool_error_message(&resp).unwrap_or_else(|| McpSession::tool_text(&resp));
+    assert!(
+        msg.contains("denied") || msg.contains("sudo"),
+        "expected deny error, got: {msg}"
+    );
+}
+
+#[test]
+fn mcp_bin_allowlist_blocks_other_bins() {
+    let fx = WorkspaceFixture::basic();
+    let cfg = fx.config();
+    let mut s = McpSession::start(&[
+        "mcp",
+        "--config",
+        cfg.to_str().unwrap(),
+        "--allow-exec",
+        "--exec-repos",
+        "api",
+        "--exec-bin-allow",
+        "git",
+    ]);
+    s.initialize();
+
+    let text = McpSession::tool_text(&s.call_tool(
+        "exec",
+        json!({
+            "repo": "api",
+            "command": ["git", "rev-parse", "--is-inside-work-tree"]
+        }),
+    ));
+    let v: Value = serde_json::from_str(&text).expect(&text);
+    assert_eq!(v["success"], true, "{v}");
+
+    let resp = s.call_tool(
+        "exec",
+        json!({
+            "repo": "api",
+            "command": ["true"]
+        }),
+    );
+    let msg = McpSession::tool_error_message(&resp).unwrap_or_else(|| McpSession::tool_text(&resp));
+    assert!(
+        msg.contains("allowlist") || msg.contains("true"),
+        "expected allowlist error, got: {msg}"
+    );
+}
+
+#[test]
+fn mcp_timeout_kills_long_command() {
+    let fx = WorkspaceFixture::basic();
+    let cfg = fx.config();
+    let mut s = McpSession::start(&[
+        "mcp",
+        "--config",
+        cfg.to_str().unwrap(),
+        "--allow-exec",
+        "--exec-repos",
+        "api",
+        "--exec-timeout-secs",
+        "1",
+        "--no-default-exec-deny",
+    ]);
+    s.initialize();
+    let text = McpSession::tool_text(&s.call_tool(
+        "exec",
+        json!({
+            "repo": "api",
+            "command": ["sleep", "30"]
+        }),
+    ));
+    let v: Value = serde_json::from_str(&text).expect(&text);
+    assert_eq!(v["timed_out"], true, "{v}");
+    assert_eq!(v["success"], false, "{v}");
+}
+
+#[test]
+fn mcp_max_output_truncates() {
+    let fx = WorkspaceFixture::basic();
+    let cfg = fx.config();
+    let mut s = McpSession::start(&[
+        "mcp",
+        "--config",
+        cfg.to_str().unwrap(),
+        "--allow-exec",
+        "--exec-repos",
+        "api",
+        "--exec-max-output-bytes",
+        "32",
+        "--no-default-exec-deny",
+    ]);
+    s.initialize();
+    // printf may not exist on all platforms; use python or yes/head — prefer shell-free.
+    // `seq` is common on macOS/Linux.
+    let text = McpSession::tool_text(&s.call_tool(
+        "exec",
+        json!({
+            "repo": "api",
+            "command": ["seq", "1", "200"]
+        }),
+    ));
+    let v: Value = serde_json::from_str(&text).expect(&text);
+    assert_eq!(v["success"], true, "{v}");
+    assert_eq!(v["stdout_truncated"], true, "{v}");
+    let stdout = v["stdout"].as_str().unwrap_or("");
+    assert!(
+        stdout.contains("truncated") || stdout.len() <= 80,
+        "{stdout}"
+    );
+}
+
+#[test]
+fn mcp_audit_log_writes_events() {
+    let fx = WorkspaceFixture::basic();
+    let cfg = fx.config();
+    let audit = fx.root.path().join("audit.jsonl");
+    let mut s = McpSession::start(&[
+        "mcp",
+        "--config",
+        cfg.to_str().unwrap(),
+        "--allow-exec",
+        "--exec-repos",
+        "api",
+        "--audit-log",
+        audit.to_str().unwrap(),
+    ]);
+    s.initialize();
+    let _ = s.call_tool(
+        "exec",
+        json!({
+            "repo": "api",
+            "command": ["git", "status", "-sb"]
+        }),
+    );
+    drop(s);
+    let body = std::fs::read_to_string(&audit).expect("audit file");
+    assert!(body.contains("\"tool\":\"exec\""), "{body}");
+    assert!(body.contains("git"), "{body}");
+}
+
+#[test]
+fn mcp_shell_blocked_when_default_deny_active() {
+    let fx = WorkspaceFixture::basic();
+    let cfg = fx.config();
+    let mut s = McpSession::start(&[
+        "mcp",
+        "--config",
+        cfg.to_str().unwrap(),
+        "--allow-exec",
+        "--allow-shell",
+        "--exec-repos",
+        "api",
+    ]);
+    s.initialize();
+    let resp = s.call_tool(
+        "exec",
+        json!({
+            "repo": "api",
+            "command": ["echo hi"],
+            "shell": true
+        }),
+    );
+    let msg = McpSession::tool_error_message(&resp).unwrap_or_else(|| McpSession::tool_text(&resp));
+    assert!(
+        msg.contains("argv") || msg.contains("policy") || msg.contains("shell"),
+        "expected shell/policy error, got: {msg}"
     );
 }
 

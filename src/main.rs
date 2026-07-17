@@ -329,6 +329,12 @@ fn run_cli() -> Result<ExitCode> {
             allow_exec,
             exec_repos,
             allow_shell,
+            exec_bin_allow,
+            exec_bin_deny,
+            no_default_exec_deny,
+            exec_timeout_secs,
+            exec_max_output_bytes,
+            audit_log,
         } => {
             let rt = tokio::runtime::Runtime::new().context("tokio runtime")?;
             rt.block_on(mcp::serve(mcp::McpOptions {
@@ -336,6 +342,12 @@ fn run_cli() -> Result<ExitCode> {
                 allow_exec,
                 exec_repos: parse_csv(exec_repos.as_deref()),
                 allow_shell,
+                exec_bin_allow: parse_csv(exec_bin_allow.as_deref()),
+                exec_bin_deny: parse_csv(exec_bin_deny.as_deref()),
+                no_default_exec_deny,
+                exec_timeout_secs,
+                exec_max_output_bytes,
+                audit_log,
             }))?;
             Ok(ExitCode::SUCCESS)
         }

@@ -9,6 +9,7 @@ pub mod context;
 pub mod discover;
 pub mod mcp;
 pub mod plan;
+pub mod policy;
 pub mod rank;
 pub mod run;
 pub mod status;

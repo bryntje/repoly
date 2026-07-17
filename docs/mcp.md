@@ -29,7 +29,7 @@ args = ["mcp"]
 env = { REPOLY_CONFIG = "/absolute/path/to/your/repoly.toml" }
 ```
 
-With mutation (prefer an allowlist):
+With mutation (prefer a repo allowlist; default sensitive-bin deny is on):
 
 ```toml
 [mcp_servers.repoly]
@@ -38,10 +38,44 @@ args = ["mcp", "--allow-exec", "--exec-repos", "api,web"]
 env = { REPOLY_CONFIG = "/absolute/path/to/your/repoly.toml" }
 ```
 
-Shell for agents (double opt-in):
+Hardened agent host (recommended):
 
 ```toml
-args = ["mcp", "--allow-exec", "--allow-shell", "--exec-repos", "api,web"]
+[mcp_servers.repoly]
+command = "repoly"
+args = [
+  "mcp",
+  "--allow-exec",
+  "--exec-repos", "api,web,worker",
+  "--exec-bin-allow", "git,cargo,npm,pnpm,yarn,node,python,python3,go,make",
+  "--exec-timeout-secs", "120",
+  "--exec-max-output-bytes", "262144",
+  "--audit-log", "/tmp/repoly-audit.jsonl",
+]
+env = { REPOLY_CONFIG = "/absolute/path/to/your/repoly.toml" }
+```
+
+Optional workspace defaults in `repoly.toml` (flags still override):
+
+```toml
+[policy]
+skip_globs = ["**/.npmrc", "**/*service-account*.json"]
+use_builtin_secret_filters = true
+exec_timeout_secs = 120
+exec_max_output_bytes = 262144
+# audit_log = ".repoly/audit.jsonl"
+```
+
+Shell for agents (double opt-in). **Bin policy must be inactive** for `shell=true` to work — pass `--no-default-exec-deny` and do not set bin allow/deny lists:
+
+```toml
+args = [
+  "mcp",
+  "--allow-exec",
+  "--allow-shell",
+  "--no-default-exec-deny",
+  "--exec-repos", "api,web",
+]
 ```
 
 CLI helper:
@@ -73,7 +107,21 @@ Same pattern:
 
 ## Safety
 
+### Layer 1
+
 - Mutation tools are disabled unless `--allow-exec`
 - `--exec-repos a,b` restricts targets
 - `shell=true` requires `--allow-shell`
 - `run` never targets all repos without a filter
+
+### Layer 2
+
+- **Default bin deny** when `--allow-exec` is set: blocks sensitive basenames (`sudo`, `dd`, `mkfs*`, `shutdown`, …). Disable with `--no-default-exec-deny`.
+- **Optional** `--exec-bin-allow` / `--exec-bin-deny` (basenames, case-insensitive)
+- **Shell + bin policy:** if any bin policy is active (including default deny), `shell=true` is rejected so scripts cannot bypass basename checks
+- **Commit pathspecs** must stay under the target repo root
+- **`--exec-timeout-secs` / `--exec-max-output-bytes`** — optional capture limits (also via `[policy]`)
+- **`--audit-log`** — JSONL of mutation tool calls
+- **`[policy].skip_globs`** — extra paths excluded from context packs
+
+See [SECURITY.md](../SECURITY.md) for the full threat model and residual risk.

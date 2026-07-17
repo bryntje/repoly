@@ -1,10 +1,11 @@
 use crate::config::{RepoEntry, Workspace};
 use anyhow::{bail, Context, Result};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 /// Result of running a command in one repo.
 #[derive(Debug)]
@@ -17,16 +18,45 @@ pub struct RepoRunResult {
     pub stdout: Option<String>,
     /// Captured stderr (when using capture mode / MCP).
     pub stderr: Option<String>,
+    /// Child was killed due to timeout.
+    pub timed_out: bool,
+    /// stdout was truncated to max_output_bytes.
+    pub stdout_truncated: bool,
+    /// stderr was truncated to max_output_bytes.
+    pub stderr_truncated: bool,
 }
 
 impl RepoRunResult {
     pub fn success(&self) -> bool {
-        self.error.is_none() && self.status.map(|s| s.success()).unwrap_or(false)
+        !self.timed_out && self.error.is_none() && self.status.map(|s| s.success()).unwrap_or(false)
     }
 
     pub fn code(&self) -> Option<i32> {
         self.status.and_then(|s| s.code())
     }
+
+    fn empty_fail(repo_id: String, path: String, error: String) -> Self {
+        Self {
+            repo_id,
+            path,
+            status: None,
+            error: Some(error),
+            stdout: None,
+            stderr: None,
+            timed_out: false,
+            stdout_truncated: false,
+            stderr_truncated: false,
+        }
+    }
+}
+
+/// Limits for captured child processes (MCP / non-interactive).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CaptureOpts {
+    /// Kill the child after this many seconds (None = no limit).
+    pub timeout_secs: Option<u64>,
+    /// Max bytes kept per stream (None = unlimited).
+    pub max_output_bytes: Option<usize>,
 }
 
 /// Resolve which repos to target for `run`.
@@ -106,14 +136,11 @@ pub fn exec_one(
 
     let path = workspace.repo_path(repo);
     if !path.exists() {
-        return Ok(RepoRunResult {
-            repo_id: repo.id.clone(),
-            path: path.display().to_string(),
-            status: None,
-            error: Some("path does not exist".into()),
-            stdout: None,
-            stderr: None,
-        });
+        return Ok(RepoRunResult::empty_fail(
+            repo.id.clone(),
+            path.display().to_string(),
+            "path does not exist".into(),
+        ));
     }
 
     if dry_run {
@@ -130,6 +157,9 @@ pub fn exec_one(
             error: None,
             stdout: None,
             stderr: None,
+            timed_out: false,
+            stdout_truncated: false,
+            stderr_truncated: false,
         });
     }
 
@@ -141,6 +171,9 @@ pub fn exec_one(
         error: None,
         stdout: None,
         stderr: None,
+        timed_out: false,
+        stdout_truncated: false,
+        stderr_truncated: false,
     })
 }
 
@@ -151,37 +184,60 @@ pub fn exec_capture(
     cmd: &[String],
     mode: LaunchMode,
 ) -> Result<RepoRunResult> {
+    exec_capture_opts(workspace, repo, cmd, mode, CaptureOpts::default())
+}
+
+/// Like [`exec_capture`] with optional timeout and output caps.
+pub fn exec_capture_opts(
+    workspace: &Workspace,
+    repo: &RepoEntry,
+    cmd: &[String],
+    mode: LaunchMode,
+    opts: CaptureOpts,
+) -> Result<RepoRunResult> {
     if cmd.is_empty() {
         bail!("no command specified");
     }
     let path = workspace.repo_path(repo);
     if !path.exists() {
-        return Ok(RepoRunResult {
-            repo_id: repo.id.clone(),
-            path: path.display().to_string(),
-            status: None,
-            error: Some("path does not exist".into()),
-            stdout: None,
-            stderr: None,
-        });
+        return Ok(RepoRunResult::empty_fail(
+            repo.id.clone(),
+            path.display().to_string(),
+            "path does not exist".into(),
+        ));
     }
-    match spawn_capture(&workspace.name, &workspace.root, repo, &path, cmd, mode) {
-        Ok((status, stdout, stderr)) => Ok(RepoRunResult {
+    match spawn_capture(
+        &workspace.name,
+        &workspace.root,
+        repo,
+        &path,
+        cmd,
+        mode,
+        opts,
+    ) {
+        Ok(captured) => Ok(RepoRunResult {
             repo_id: repo.id.clone(),
             path: path.display().to_string(),
-            status: Some(status),
-            error: None,
-            stdout: Some(stdout),
-            stderr: Some(stderr),
+            status: Some(captured.status),
+            error: if captured.timed_out {
+                Some(format!(
+                    "command timed out after {}s",
+                    opts.timeout_secs.unwrap_or(0)
+                ))
+            } else {
+                None
+            },
+            stdout: Some(captured.stdout),
+            stderr: Some(captured.stderr),
+            timed_out: captured.timed_out,
+            stdout_truncated: captured.stdout_truncated,
+            stderr_truncated: captured.stderr_truncated,
         }),
-        Err(e) => Ok(RepoRunResult {
-            repo_id: repo.id.clone(),
-            path: path.display().to_string(),
-            status: None,
-            error: Some(e.to_string()),
-            stdout: None,
-            stderr: None,
-        }),
+        Err(e) => Ok(RepoRunResult::empty_fail(
+            repo.id.clone(),
+            path.display().to_string(),
+            e.to_string(),
+        )),
     }
 }
 
@@ -249,37 +305,49 @@ fn run_parallel(
                     error: None,
                     stdout: None,
                     stderr: None,
+                    timed_out: false,
+                    stdout_truncated: false,
+                    stderr_truncated: false,
                 }
             } else if !path.exists() {
-                RepoRunResult {
-                    repo_id: repo.id.clone(),
-                    path: path.display().to_string(),
-                    status: None,
-                    error: Some("path does not exist".into()),
-                    stdout: None,
-                    stderr: None,
-                }
+                RepoRunResult::empty_fail(
+                    repo.id.clone(),
+                    path.display().to_string(),
+                    "path does not exist".into(),
+                )
             } else {
-                match spawn_capture(&ws_name, &root, &repo, &path, &cmd, mode) {
-                    Ok((status, stdout, stderr)) => {
-                        let _ = tx.send((repo.id.clone(), stdout.clone(), stderr.clone()));
+                match spawn_capture(
+                    &ws_name,
+                    &root,
+                    &repo,
+                    &path,
+                    &cmd,
+                    mode,
+                    CaptureOpts::default(),
+                ) {
+                    Ok(captured) => {
+                        let _ = tx.send((
+                            repo.id.clone(),
+                            captured.stdout.clone(),
+                            captured.stderr.clone(),
+                        ));
                         RepoRunResult {
                             repo_id: repo.id.clone(),
                             path: path.display().to_string(),
-                            status: Some(status),
+                            status: Some(captured.status),
                             error: None,
-                            stdout: Some(stdout),
-                            stderr: Some(stderr),
+                            stdout: Some(captured.stdout),
+                            stderr: Some(captured.stderr),
+                            timed_out: captured.timed_out,
+                            stdout_truncated: captured.stdout_truncated,
+                            stderr_truncated: captured.stderr_truncated,
                         }
                     }
-                    Err(e) => RepoRunResult {
-                        repo_id: repo.id.clone(),
-                        path: path.display().to_string(),
-                        status: None,
-                        error: Some(e.to_string()),
-                        stdout: None,
-                        stderr: None,
-                    },
+                    Err(e) => RepoRunResult::empty_fail(
+                        repo.id.clone(),
+                        path.display().to_string(),
+                        e.to_string(),
+                    ),
                 }
             };
             result
@@ -352,6 +420,15 @@ fn spawn_inherit(
         .with_context(|| format!("failed to spawn command in {}", path.display()))
 }
 
+struct CapturedOutput {
+    status: ExitStatus,
+    stdout: String,
+    stderr: String,
+    timed_out: bool,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+}
+
 fn spawn_capture(
     workspace_name: &str,
     root: &Path,
@@ -359,21 +436,116 @@ fn spawn_capture(
     path: &Path,
     cmd: &[String],
     mode: LaunchMode,
-) -> Result<(ExitStatus, String, String)> {
+    opts: CaptureOpts,
+) -> Result<CapturedOutput> {
     let mut c = build_command(cmd, mode)?;
     c.current_dir(path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     inject_env(&mut c, workspace_name, root, repo, path);
-    let output = c
-        .output()
+    let mut child = c
+        .spawn()
         .with_context(|| format!("failed to spawn command in {}", path.display()))?;
-    Ok((
-        output.status,
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    ))
+
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
+
+    let max = opts.max_output_bytes;
+    let out_handle = thread::spawn(move || read_capped(stdout_pipe.take(), max));
+    let err_handle = thread::spawn(move || read_capped(stderr_pipe.take(), max));
+
+    let deadline = opts
+        .timeout_secs
+        .map(|s| Instant::now() + Duration::from_secs(s));
+
+    let mut timed_out = false;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if let Some(dl) = deadline {
+                    if Instant::now() >= dl {
+                        timed_out = true;
+                        let _ = child.kill();
+                        break child.wait().unwrap_or_else(|_| dummy_success());
+                    }
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => {
+                return Err(e).context("waiting for child process");
+            }
+        }
+    };
+
+    let (stdout, stdout_truncated) = out_handle.join().unwrap_or_default();
+    let (stderr, stderr_truncated) = err_handle.join().unwrap_or_default();
+
+    Ok(CapturedOutput {
+        status,
+        stdout,
+        stderr,
+        timed_out,
+        stdout_truncated,
+        stderr_truncated,
+    })
+}
+
+fn read_capped(pipe: Option<impl Read>, max: Option<usize>) -> (String, bool) {
+    let Some(mut pipe) = pipe else {
+        return (String::new(), false);
+    };
+    let mut buf = Vec::new();
+    let mut truncated = false;
+    let mut chunk = [0u8; 8192];
+    loop {
+        match pipe.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                if let Some(limit) = max {
+                    if buf.len() >= limit {
+                        truncated = true;
+                        // Drain remainder without storing
+                        let mut sink = [0u8; 8192];
+                        while let Ok(m) = pipe.read(&mut sink) {
+                            if m == 0 {
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    let room = limit.saturating_sub(buf.len());
+                    let take = n.min(room);
+                    buf.extend_from_slice(&chunk[..take]);
+                    if take < n {
+                        truncated = true;
+                        let mut sink = [0u8; 8192];
+                        while let Ok(m) = pipe.read(&mut sink) {
+                            if m == 0 {
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                } else {
+                    buf.extend_from_slice(&chunk[..n]);
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    if truncated {
+        const MARKER: &str = "\n… [truncated by repoly; raise --exec-max-output-bytes]\n";
+        let marker_bytes = MARKER.as_bytes();
+        if let Some(limit) = max {
+            if buf.len() + marker_bytes.len() > limit && buf.len() > marker_bytes.len() {
+                buf.truncate(limit.saturating_sub(marker_bytes.len()));
+            }
+        }
+        buf.extend_from_slice(marker_bytes);
+    }
+    (String::from_utf8_lossy(&buf).into_owned(), truncated)
 }
 
 fn build_command(cmd: &[String], mode: LaunchMode) -> Result<Command> {
@@ -520,6 +692,7 @@ mod tests {
             root: PathBuf::from("/tmp/t"),
             config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
+            policy: Default::default(),
             repos: vec![
                 RepoEntry {
                     id: "api".into(),

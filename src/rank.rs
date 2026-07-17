@@ -231,7 +231,12 @@ fn load_repo_snippet(workspace: &Workspace, repo: &RepoEntry) -> String {
     let mut s = String::new();
     for f in files {
         let p = root.join(f);
-        if is_secret_name(f) {
+        if crate::policy::should_skip_context_path(
+            f,
+            f,
+            &workspace.policy.skip_globs,
+            workspace.policy.use_builtin_secret_filters,
+        ) {
             continue;
         }
         if let Some(chunk) = read_snippet(&p, SNIPPET_BYTES) {
@@ -254,11 +259,6 @@ fn read_snippet(path: &Path, max_bytes: usize) -> Option<String> {
     Some(String::from_utf8_lossy(slice).into_owned())
 }
 
-fn is_secret_name(name: &str) -> bool {
-    let n = name.to_lowercase();
-    n.starts_with(".env") || n.contains("secret") || n.contains("credential")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,6 +271,7 @@ mod tests {
             root: PathBuf::from("/tmp/t"),
             config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
+            policy: Default::default(),
             repos: vec![
                 RepoEntry {
                     id: "core".into(),

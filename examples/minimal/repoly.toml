@@ -9,6 +9,12 @@ name = "minimal"
 always = ["docs/PLATFORM.md"]
 max_chars = 24000
 
+# Optional safety defaults (MCP host flags still override)
+# [policy]
+# skip_globs = ["**/.npmrc"]
+# exec_timeout_secs = 120
+# exec_max_output_bytes = 262144
+
 [[repos]]
 id = "api"
 path = "api"

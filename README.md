@@ -164,13 +164,26 @@ args = ["mcp"]
 env = { REPOLY_CONFIG = "/absolute/path/to/repoly.toml" }
 ```
 
-**With mutation** (prefer allowlist):
+**With mutation** (prefer repo allowlist; default sensitive-bin deny is on — see [SECURITY.md](SECURITY.md)):
 
 ```toml
 [mcp_servers.repoly]
 command = "repoly"
 args = ["mcp", "--allow-exec", "--exec-repos", "api,web"]
 env = { REPOLY_CONFIG = "/absolute/path/to/repoly.toml" }
+```
+
+**Hardened agent host** (optional bin allowlist + limits):
+
+```toml
+args = [
+  "mcp",
+  "--allow-exec",
+  "--exec-repos", "api,web",
+  "--exec-bin-allow", "git,cargo,npm,node,python,python3,go,make",
+  "--exec-timeout-secs", "120",
+  "--exec-max-output-bytes", "262144",
+]
 ```
 
 ```bash
@@ -182,7 +195,8 @@ grok mcp add repoly -- repoly mcp --allow-exec --exec-repos api,web
 | Tool | Notes |
 |------|--------|
 | `list_repos`, `status`, `plan`, `build_context`, `repo_path`, `workspace_root` | Always available |
-| `exec`, `run`, `commit` | Need `--allow-exec` (+ `--allow-shell` for shell) |
+| `exec`, `run`, `commit` | Need `--allow-exec`; default bin deny; optional `--exec-bin-allow` / `--exec-bin-deny` |
+| shell mode | Needs `--allow-shell` **and** inactive bin policy (`--no-default-exec-deny`, no custom lists) |
 
 ---
 

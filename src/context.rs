@@ -1,4 +1,5 @@
 use crate::config::{RepoEntry, Workspace, DEFAULT_CONTEXT_FILES};
+use crate::policy;
 use crate::rank;
 use crate::status::{self, RepoStatus};
 use anyhow::Result;
@@ -94,7 +95,7 @@ pub fn build_context(
         if !path.is_file() {
             continue;
         }
-        if is_secret_path(&path) {
+        if should_skip_file(workspace, rel, &path) {
             continue;
         }
         match read_budgeted(&path, max_chars.saturating_sub(used), &mut truncated) {
@@ -112,7 +113,7 @@ pub fn build_context(
     // Optional status doc
     if let Some(rel) = &workspace.context.status_doc {
         let path = workspace.root.join(rel);
-        if path.is_file() && !is_secret_path(&path) {
+        if path.is_file() && !should_skip_file(workspace, rel, &path) {
             // Cap status doc more aggressively
             let cap = (max_chars.saturating_sub(used)).min(8_000);
             if let Some(content) = read_budgeted(&path, cap, &mut truncated) {
@@ -148,7 +149,7 @@ pub fn build_context(
 
             for cf in context_files {
                 let fp = path.join(cf);
-                if !fp.is_file() || is_secret_path(&fp) {
+                if !fp.is_file() || should_skip_file(workspace, cf, &fp) {
                     continue;
                 }
                 let remaining = max_chars.saturating_sub(used);
@@ -390,19 +391,14 @@ pub fn expand_with_deps<'a>(
         .collect()
 }
 
-fn is_secret_path(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    name.starts_with(".env")
-        || name.contains("credential")
-        || name.contains("secret")
-        || name.ends_with(".pem")
-        || name.ends_with(".key")
-        || name == "id_rsa"
-        || name == "id_ed25519"
+fn should_skip_file(workspace: &Workspace, relative: &str, path: &Path) -> bool {
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    policy::should_skip_context_path(
+        relative,
+        name,
+        &workspace.policy.skip_globs,
+        workspace.policy.use_builtin_secret_filters,
+    )
 }
 
 fn read_budgeted(path: &Path, budget: usize, truncated: &mut bool) -> Option<String> {
@@ -612,6 +608,7 @@ mod tests {
             root: PathBuf::from("/tmp/acme"),
             config_path: PathBuf::from("/tmp/acme/repoly.toml"),
             context: ContextSection::default(),
+            policy: Default::default(),
             repos: vec![
                 RepoEntry {
                     id: "api".into(),

@@ -225,11 +225,14 @@ pub enum Commands {
     ///
     /// Read-only tools by default. Enable command execution with `--allow-exec`.
     /// Shell form for exec requires an extra `--allow-shell`.
+    /// With `--allow-exec`, a default deny list blocks sensitive binaries (sudo, dd, …);
+    /// see `--exec-bin-deny` / `--no-default-exec-deny`. Shell mode is rejected while
+    /// any bin policy (including the default deny list) is active.
     ///
     /// ```toml
     /// [mcp_servers.repoly]
     /// command = "repoly"
-    /// args = ["mcp", "--allow-exec", "--exec-repos", "core,app"]
+    /// args = ["mcp", "--allow-exec", "--exec-repos", "api,web"]
     /// env = { REPOLY_CONFIG = "/path/to/repoly.toml" }
     /// ```
     Mcp {
@@ -242,8 +245,28 @@ pub enum Commands {
         #[arg(long, value_name = "IDS")]
         exec_repos: Option<String>,
         /// Allow MCP exec/run with shell=true (`sh -c`). Requires --allow-exec.
+        /// Incompatible with an active bin allow/deny policy (including default deny):
+        /// pass `--no-default-exec-deny` and no custom bin lists to use shell.
         #[arg(long)]
         allow_shell: bool,
+        /// Comma-separated binary basenames allowed as argv[0] for exec/run (optional allowlist)
+        #[arg(long, value_name = "BINS")]
+        exec_bin_allow: Option<String>,
+        /// Extra binary basenames to deny (merged with the default deny list unless disabled)
+        #[arg(long, value_name = "BINS")]
+        exec_bin_deny: Option<String>,
+        /// Do not apply the built-in sensitive binary deny list (sudo, dd, mkfs, …)
+        #[arg(long)]
+        no_default_exec_deny: bool,
+        /// Kill MCP exec/run children after N seconds (0 = unlimited; overrides [policy] in toml)
+        #[arg(long, value_name = "SECS")]
+        exec_timeout_secs: Option<u64>,
+        /// Cap each of stdout/stderr to N bytes for MCP exec/run (0 = unlimited)
+        #[arg(long, value_name = "BYTES")]
+        exec_max_output_bytes: Option<usize>,
+        /// Append JSONL audit events for exec/run/commit (path; relative to cwd or absolute)
+        #[arg(long, value_name = "PATH")]
+        audit_log: Option<PathBuf>,
     },
     /// Print version
     Version,

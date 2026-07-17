@@ -29,6 +29,9 @@ pub struct RepolyFile {
     pub workspace: WorkspaceSection,
     #[serde(default)]
     pub context: ContextSection,
+    /// Optional workspace-level safety defaults (MCP session flags still win).
+    #[serde(default)]
+    pub policy: PolicySection,
     #[serde(default)]
     pub repos: Vec<RepoEntry>,
 }
@@ -48,6 +51,42 @@ pub struct ContextSection {
     pub status_doc: Option<String>,
     #[serde(default)]
     pub max_chars: Option<usize>,
+}
+
+/// Optional `[policy]` in repoly.toml — generic safety knobs for any polyrepo.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PolicySection {
+    /// Glob patterns (relative path style) skipped when packing context.
+    #[serde(default)]
+    pub skip_globs: Vec<String>,
+    /// Keep built-in secret filename heuristics (default true).
+    #[serde(default = "default_true")]
+    pub use_builtin_secret_filters: bool,
+    /// Suggested MCP capture timeout when host does not pass a flag.
+    #[serde(default)]
+    pub exec_timeout_secs: Option<u64>,
+    /// Suggested MCP max stdout/stderr bytes when host does not pass a flag.
+    #[serde(default)]
+    pub exec_max_output_bytes: Option<usize>,
+    /// Optional audit log path (relative to workspace root or absolute).
+    #[serde(default)]
+    pub audit_log: Option<String>,
+}
+
+impl Default for PolicySection {
+    fn default() -> Self {
+        Self {
+            skip_globs: Vec::new(),
+            use_builtin_secret_filters: true,
+            exec_timeout_secs: None,
+            exec_max_output_bytes: None,
+            audit_log: None,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -74,6 +113,7 @@ pub struct Workspace {
     #[allow(dead_code)]
     pub config_path: PathBuf,
     pub context: ContextSection,
+    pub policy: PolicySection,
     pub repos: Vec<RepoEntry>,
 }
 
@@ -175,6 +215,7 @@ pub fn load_config(path: &Path) -> Result<Workspace, ConfigError> {
         root: root.canonicalize().unwrap_or(root),
         config_path: path.to_path_buf(),
         context: file.context,
+        policy: file.policy,
         repos: file.repos,
     })
 }

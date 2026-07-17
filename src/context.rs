@@ -422,7 +422,7 @@ fn read_budgeted(path: &Path, budget: usize, truncated: &mut bool) -> Option<Str
 
 pub fn format_markdown(pack: &ContextPack) -> String {
     let mut out = String::new();
-    out.push_str(&format!("# Poly workspace: {}\n\n", pack.workspace));
+    out.push_str(&format!("# repoly workspace: {}\n\n", pack.workspace));
     out.push_str(&format!("- **root:** `{}`\n", pack.root));
     if let Some(q) = &pack.query {
         out.push_str(&format!("- **query:** {q}\n"));
@@ -509,7 +509,7 @@ pub fn format_markdown(pack: &ContextPack) -> String {
 
 pub fn format_prompt(pack: &ContextPack) -> String {
     let mut out = String::new();
-    out.push_str(&format!("# Poly workspace: {}\n", pack.workspace));
+    out.push_str(&format!("# repoly workspace: {}\n", pack.workspace));
     if let Some(q) = &pack.query {
         out.push_str(&format!("# Query: {q}\n"));
     }

@@ -18,21 +18,35 @@ No cloud. No IDE required. No forks of your coding agent.
 
 Requires **`git`** on `PATH`.
 
-```bash
-# From source (today)
-cargo install --path .
+### From source
 
-# Or build a release binary
-cargo build --release
-# → target/release/repoly
+```bash
+cargo install --path .
+# or
+cargo build --release   # → target/release/repoly
 ```
 
-After launch packaging (GitHub Releases + crates.io):
+### From GitHub Releases (recommended once tagged)
+
+1. Open [Releases](https://github.com/bryntje/repoly/releases)
+2. Download the archive for your OS/CPU (see names below)
+3. Extract and put `repoly` on your `PATH`
+4. Verify the matching `.sha256` file
+
+| Archive | Platform |
+|---------|----------|
+| `repoly-aarch64-apple-darwin.tar.gz` | macOS Apple Silicon |
+| `repoly-x86_64-apple-darwin.tar.gz` | macOS Intel |
+| `repoly-x86_64-unknown-linux-gnu.tar.gz` | Linux x86_64 |
+| `repoly-aarch64-unknown-linux-gnu.tar.gz` | Linux ARM64 |
+| `repoly-x86_64-pc-windows-msvc.zip` | Windows x86_64 |
+
+Releases are produced automatically when a `v*` tag is pushed (see [CONTRIBUTING.md](./CONTRIBUTING.md#releasing-maintainers)).
+
+### From crates.io (after publish)
 
 ```bash
-# Planned:
-# cargo install repoly
-# or download a release binary from GitHub Releases
+cargo install repoly
 ```
 
 Check:
@@ -41,7 +55,7 @@ Check:
 repoly version   # → repoly 0.1.0
 ```
 
-**Platforms:** macOS and Linux are first-class (CI). Windows is **experimental**.
+**Platforms:** macOS and Linux are first-class (CI). Windows binaries are built but support is **experimental**.
 
 ---
 
@@ -238,7 +252,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). Security: [SECURITY.md](./SECURITY.md)
 
 ## Roadmap
 
-- GitHub Release binaries + `cargo install repoly` (launch packaging)
+- Publish first `v0.1.0` tag + crates.io
 - `repoly doctor`
 - Configurable synonyms / exec policy in `repoly.toml`
 - Homebrew (later)

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Actions **Release** workflow: multi-platform binaries + checksums on `v*` tags
+
 ## [0.1.0] — 2026-07-17
 
 First **public** release of `repoly` (internal dogfood history through 0.10.x is not versioned for crates.io).

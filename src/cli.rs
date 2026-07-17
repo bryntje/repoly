@@ -165,12 +165,18 @@ pub enum Commands {
     /// Run a command in one repo's working directory
     ///
     /// Example: `poly exec app -- npm test`
+    ///
+    /// Shell pipes/redirects (explicit, less safe):
+    ///   `poly exec app --shell -- 'npm test && echo ok'`
     Exec {
         /// Repo id
         repo: String,
         /// Print the command without running it
         #[arg(long)]
         dry_run: bool,
+        /// Run via `sh -c` / `cmd /C` (pipes, &&, globs). Off by default.
+        #[arg(long)]
+        shell: bool,
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
         /// Command and args (use `--` before flags meant for the child)
@@ -202,6 +208,9 @@ pub enum Commands {
         /// Print commands without running them
         #[arg(long)]
         dry_run: bool,
+        /// Run via `sh -c` / `cmd /C` (pipes, &&, globs). Off by default.
+        #[arg(long)]
+        shell: bool,
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
         /// Command and args
@@ -211,6 +220,7 @@ pub enum Commands {
     /// Start an MCP stdio server (for Grok, Claude Code, Cursor, …)
     ///
     /// Read-only tools by default. Enable command execution with `--allow-exec`.
+    /// Shell form for exec requires an extra `--allow-shell`.
     ///
     /// ```toml
     /// [mcp_servers.poly]
@@ -221,12 +231,15 @@ pub enum Commands {
     Mcp {
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
-        /// Expose the `exec` tool (runs argv in a repo cwd; no shell)
+        /// Expose the `exec` / `commit` tools
         #[arg(long)]
         allow_exec: bool,
-        /// Comma-separated repo ids that `exec` may target (requires --allow-exec)
+        /// Comma-separated repo ids that `exec`/`commit` may target (requires --allow-exec)
         #[arg(long, value_name = "IDS")]
         exec_repos: Option<String>,
+        /// Allow MCP exec with shell=true (`sh -c`). Requires --allow-exec.
+        #[arg(long)]
+        allow_shell: bool,
     },
     /// Print version
     Version,

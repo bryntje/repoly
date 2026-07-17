@@ -98,10 +98,17 @@ args = ["mcp", "--allow-exec", "--exec-repos", "core,app"]
 env = { POLY_CONFIG = "/Users/you/Dev/Projects/Github/poly.toml" }
 ```
 
+Shell for MCP (double opt-in — more powerful, easier to misuse):
+
+```toml
+args = ["mcp", "--allow-exec", "--allow-shell", "--exec-repos", "app"]
+```
+
 ```bash
 # CLI equivalents
 poly mcp --allow-exec
 poly mcp --allow-exec --exec-repos core,app
+poly mcp --allow-exec --allow-shell --exec-repos app
 
 grok mcp add poly -- poly mcp --allow-exec --exec-repos core,app
 ```
@@ -110,8 +117,9 @@ Safety notes:
 
 - `exec` is **off** unless `--allow-exec`
 - `--exec-repos a,b` further restricts targets
-- No shell: `command` is an argv array (`["git","status"]`), not `"git status"`
-- `poly run` multi-repo remains CLI-only
+- Default launch is **argv** (`["git","status"]`) — no shell expansion
+- `--shell` / MCP `shell: true` needs an extra explicit flag (`--allow-shell` on MCP)
+- `poly run` multi-repo remains CLI-only (no MCP multi-run yet)
 
 ### Run commands in repos
 
@@ -120,6 +128,10 @@ Safety notes:
 poly exec app -- npm test
 poly exec core -- uv run pytest
 poly exec app -- grok "fix the OAuth callback"
+
+# Shell mode (explicit; pipes / && / globs) — off by default
+poly exec app --shell -- 'npm test && echo ok'
+poly run --repos core,app --shell -- 'git status -sb | head -5'
 
 # Several repos, sequential
 poly run --repos core,app -- git status -sb
@@ -235,7 +247,6 @@ poly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
 
 ## Roadmap
 
-- Optional shell mode (`sh -c`) behind an explicit flag
 - Optional MCP multi-repo `run`
 - Configurable synonym dictionary in `poly.toml`
 

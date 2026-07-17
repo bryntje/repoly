@@ -284,12 +284,14 @@ fn run() -> Result<ExitCode> {
         Commands::Exec {
             repo,
             dry_run,
+            shell,
             config,
             cmd,
         } => {
             let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
             let entry = run::resolve_repo(&workspace, &repo)?;
-            let result = run::exec_one(&workspace, entry, &cmd, dry_run)?;
+            let mode = run::LaunchMode::from_shell_flag(shell);
+            let result = run::exec_one(&workspace, entry, &cmd, dry_run, mode)?;
             if let Some(err) = &result.error {
                 bail!("exec failed in '{}': {err}", result.repo_id);
             }
@@ -303,6 +305,7 @@ fn run() -> Result<ExitCode> {
             parallel,
             continue_on_error,
             dry_run,
+            shell,
             config,
             cmd,
         } => {
@@ -313,6 +316,7 @@ fn run() -> Result<ExitCode> {
                 parse_csv(tags.as_deref()).as_deref(),
                 role.as_deref(),
             )?;
+            let mode = run::LaunchMode::from_shell_flag(shell);
             let results = run::run_many(
                 &workspace,
                 &selected,
@@ -320,6 +324,7 @@ fn run() -> Result<ExitCode> {
                 parallel,
                 continue_on_error,
                 dry_run,
+                mode,
             )?;
             run::summarize(&results);
             Ok(ExitCode::from(run::exit_code_from_results(&results)))
@@ -328,6 +333,7 @@ fn run() -> Result<ExitCode> {
             config,
             allow_exec,
             exec_repos,
+            allow_shell,
         } => {
             // MCP owns stdio; never print normal CLI output on stdout.
             let rt = tokio::runtime::Runtime::new().context("tokio runtime")?;
@@ -335,6 +341,7 @@ fn run() -> Result<ExitCode> {
                 config,
                 allow_exec,
                 exec_repos: parse_csv(exec_repos.as_deref()),
+                allow_shell,
             }))?;
             Ok(ExitCode::SUCCESS)
         }

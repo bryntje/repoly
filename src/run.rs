@@ -72,12 +72,33 @@ pub fn resolve_repo<'a>(workspace: &'a Workspace, id: &str) -> Result<&'a RepoEn
         .ok_or_else(|| anyhow::anyhow!("unknown repo id '{id}'"))
 }
 
+/// How to launch a child process.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LaunchMode {
+    /// `program arg1 arg2` — no shell (default, safer).
+    #[default]
+    Argv,
+    /// `sh -c "…"` (Unix) / `cmd /C "…"` (Windows). Needs explicit `--shell`.
+    Shell,
+}
+
+impl LaunchMode {
+    pub fn from_shell_flag(shell: bool) -> Self {
+        if shell {
+            LaunchMode::Shell
+        } else {
+            LaunchMode::Argv
+        }
+    }
+}
+
 /// Run `cmd` in a single repo. Inherits stdio (interactive tools work).
 pub fn exec_one(
     workspace: &Workspace,
     repo: &RepoEntry,
     cmd: &[String],
     dry_run: bool,
+    mode: LaunchMode,
 ) -> Result<RepoRunResult> {
     if cmd.is_empty() {
         bail!("no command specified (usage: poly exec <repo> -- <command...>)");
@@ -100,7 +121,7 @@ pub fn exec_one(
             "[dry-run] {} @ {}: {}",
             repo.id,
             path.display(),
-            shell_join(cmd)
+            format_cmd(cmd, mode)
         );
         return Ok(RepoRunResult {
             repo_id: repo.id.clone(),
@@ -112,7 +133,7 @@ pub fn exec_one(
         });
     }
 
-    let status = spawn_inherit(workspace, repo, &path, cmd)?;
+    let status = spawn_inherit(workspace, repo, &path, cmd, mode)?;
     Ok(RepoRunResult {
         repo_id: repo.id.clone(),
         path: path.display().to_string(),
@@ -128,6 +149,7 @@ pub fn exec_capture(
     workspace: &Workspace,
     repo: &RepoEntry,
     cmd: &[String],
+    mode: LaunchMode,
 ) -> Result<RepoRunResult> {
     if cmd.is_empty() {
         bail!("no command specified");
@@ -143,7 +165,7 @@ pub fn exec_capture(
             stderr: None,
         });
     }
-    match spawn_capture(&workspace.name, &workspace.root, repo, &path, cmd) {
+    match spawn_capture(&workspace.name, &workspace.root, repo, &path, cmd, mode) {
         Ok((status, stdout, stderr)) => Ok(RepoRunResult {
             repo_id: repo.id.clone(),
             path: path.display().to_string(),
@@ -171,19 +193,20 @@ pub fn run_many(
     parallel: bool,
     continue_on_error: bool,
     dry_run: bool,
+    mode: LaunchMode,
 ) -> Result<Vec<RepoRunResult>> {
     if cmd.is_empty() {
         bail!("no command specified (usage: poly run --repos a,b -- <command...>)");
     }
 
     if parallel && repos.len() > 1 {
-        return run_parallel(workspace, repos, cmd, dry_run);
+        return run_parallel(workspace, repos, cmd, dry_run, mode);
     }
 
     let mut results = Vec::new();
     for repo in repos {
-        print_banner(&repo.id, &workspace.repo_path(repo), cmd);
-        let r = exec_one(workspace, repo, cmd, dry_run)?;
+        print_banner(&repo.id, &workspace.repo_path(repo), cmd, mode);
+        let r = exec_one(workspace, repo, cmd, dry_run, mode)?;
         let ok = r.success();
         results.push(r);
         if !ok && !continue_on_error {
@@ -198,6 +221,7 @@ fn run_parallel(
     repos: &[&RepoEntry],
     cmd: &[String],
     dry_run: bool,
+    mode: LaunchMode,
 ) -> Result<Vec<RepoRunResult>> {
     let (tx, rx) = mpsc::channel();
     let mut handles = Vec::new();
@@ -216,7 +240,7 @@ fn run_parallel(
                     "[dry-run] {} @ {}: {}",
                     repo.id,
                     path.display(),
-                    shell_join(&cmd)
+                    format_cmd(&cmd, mode)
                 );
                 RepoRunResult {
                     repo_id: repo.id.clone(),
@@ -236,7 +260,7 @@ fn run_parallel(
                     stderr: None,
                 }
             } else {
-                match spawn_capture(&ws_name, &root, &repo, &path, &cmd) {
+                match spawn_capture(&ws_name, &root, &repo, &path, &cmd, mode) {
                     Ok((status, stdout, stderr)) => {
                         let _ = tx.send((repo.id.clone(), stdout.clone(), stderr.clone()));
                         RepoRunResult {
@@ -295,10 +319,10 @@ fn run_parallel(
     Ok(results)
 }
 
-fn print_banner(id: &str, path: &Path, cmd: &[String]) {
+fn print_banner(id: &str, path: &Path, cmd: &[String], mode: LaunchMode) {
     eprintln!("\n══ {} ══", id);
     eprintln!("path: {}", path.display());
-    eprintln!("$ {}", shell_join(cmd));
+    eprintln!("$ {}", format_cmd(cmd, mode));
 }
 
 fn inject_env(cmd: &mut Command, workspace_name: &str, root: &Path, repo: &RepoEntry, path: &Path) {
@@ -316,17 +340,16 @@ fn spawn_inherit(
     repo: &RepoEntry,
     path: &Path,
     cmd: &[String],
+    mode: LaunchMode,
 ) -> Result<ExitStatus> {
-    let (program, args) = split_cmd(cmd)?;
-    let mut c = Command::new(program);
-    c.args(args)
-        .current_dir(path)
+    let mut c = build_command(cmd, mode)?;
+    c.current_dir(path)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
     inject_env(&mut c, &workspace.name, &workspace.root, repo, path);
     c.status()
-        .with_context(|| format!("failed to spawn '{program}' in {}", path.display()))
+        .with_context(|| format!("failed to spawn command in {}", path.display()))
 }
 
 fn spawn_capture(
@@ -335,23 +358,82 @@ fn spawn_capture(
     repo: &RepoEntry,
     path: &Path,
     cmd: &[String],
+    mode: LaunchMode,
 ) -> Result<(ExitStatus, String, String)> {
-    let (program, args) = split_cmd(cmd)?;
-    let mut c = Command::new(program);
-    c.args(args)
-        .current_dir(path)
+    let mut c = build_command(cmd, mode)?;
+    c.current_dir(path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     inject_env(&mut c, workspace_name, root, repo, path);
     let output = c
         .output()
-        .with_context(|| format!("failed to spawn '{program}' in {}", path.display()))?;
+        .with_context(|| format!("failed to spawn command in {}", path.display()))?;
     Ok((
         output.status,
         String::from_utf8_lossy(&output.stdout).into_owned(),
         String::from_utf8_lossy(&output.stderr).into_owned(),
     ))
+}
+
+fn build_command(cmd: &[String], mode: LaunchMode) -> Result<Command> {
+    match mode {
+        LaunchMode::Argv => {
+            let (program, args) = split_cmd(cmd)?;
+            let mut c = Command::new(program);
+            c.args(args);
+            Ok(c)
+        }
+        LaunchMode::Shell => {
+            let line = shell_script(cmd);
+            Ok(shell_command(&line))
+        }
+    }
+}
+
+/// Build platform shell invocation for a script line.
+fn shell_command(script: &str) -> Command {
+    #[cfg(unix)]
+    {
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(script);
+        c
+    }
+    #[cfg(windows)]
+    {
+        let mut c = Command::new("cmd");
+        c.arg("/C").arg(script);
+        c
+    }
+}
+
+/// Script string for shell mode: single arg used as-is; else shell-quoted join.
+fn shell_script(cmd: &[String]) -> String {
+    if cmd.len() == 1 {
+        cmd[0].clone()
+    } else {
+        shell_join(cmd)
+    }
+}
+
+fn format_cmd(cmd: &[String], mode: LaunchMode) -> String {
+    match mode {
+        LaunchMode::Argv => shell_join(cmd),
+        LaunchMode::Shell => {
+            #[cfg(unix)]
+            {
+                format!("sh -c {}", shell_quote(&shell_script(cmd)))
+            }
+            #[cfg(windows)]
+            {
+                format!("cmd /C {}", shell_quote(&shell_script(cmd)))
+            }
+        }
+    }
+}
+
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 fn split_cmd(cmd: &[String]) -> Result<(&str, &[String])> {
@@ -483,5 +565,19 @@ mod tests {
     #[test]
     fn shell_join_quotes() {
         assert_eq!(shell_join(&["echo".into(), "a b".into()]), "echo \"a b\"");
+    }
+
+    #[test]
+    fn shell_script_single_arg_passthrough() {
+        assert_eq!(
+            shell_script(&["npm test && echo ok".into()]),
+            "npm test && echo ok"
+        );
+    }
+
+    #[test]
+    fn format_cmd_marks_shell() {
+        let s = format_cmd(&["echo hi".into()], LaunchMode::Shell);
+        assert!(s.contains("sh -c") || s.contains("cmd /C"));
     }
 }

@@ -30,6 +30,8 @@ pub struct McpOptions {
     pub allow_exec: bool,
     /// If set, `exec` may only target these repo ids.
     pub exec_repos: Option<Vec<String>>,
+    /// Allow `exec` with shell=true (`sh -c`). Requires allow_exec.
+    pub allow_shell: bool,
 }
 
 /// Run the MCP server on stdio until the client disconnects.
@@ -53,6 +55,7 @@ pub struct PolyMcp {
     allow_exec: bool,
     /// Allowlist of repo ids for exec; None = all workspace repos when allow_exec.
     exec_repos: Option<HashSet<String>>,
+    allow_shell: bool,
 }
 
 impl PolyMcp {
@@ -66,6 +69,9 @@ impl PolyMcp {
         if opts.exec_repos.is_some() && !opts.allow_exec {
             anyhow::bail!("--exec-repos requires --allow-exec");
         }
+        if opts.allow_shell && !opts.allow_exec {
+            anyhow::bail!("--allow-shell requires --allow-exec");
+        }
 
         let exec_repos = opts.exec_repos.map(|v| v.into_iter().collect());
 
@@ -74,6 +80,7 @@ impl PolyMcp {
             config_path: opts.config.or_else(|| find_config().ok()),
             allow_exec: opts.allow_exec,
             exec_repos,
+            allow_shell: opts.allow_shell,
         })
     }
 
@@ -199,8 +206,11 @@ struct ExecArgs {
     /// Repo id to run in (must be allowed when --exec-repos is set).
     repo: String,
     /// Command argv as separate strings, e.g. ["git", "status", "-sb"].
-    /// First element is the program; remaining are args. No shell expansion.
+    /// First element is the program; remaining are args. No shell expansion unless shell=true.
     command: Vec<String>,
+    /// Run via sh -c / cmd /C. Requires server `--allow-shell`. Prefer false.
+    #[serde(default)]
+    shell: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -379,18 +389,28 @@ impl PolyMcp {
             ));
         }
 
+        let want_shell = args.shell.unwrap_or(false);
+        if want_shell && !self.allow_shell {
+            return Err(McpError::invalid_params(
+                "shell exec is disabled; restart with `poly mcp --allow-exec --allow-shell`",
+                None,
+            ));
+        }
+        let mode = run::LaunchMode::from_shell_flag(want_shell);
+
         let ws = self.load_ws()?;
         let entry = run::resolve_repo(&ws, &args.repo)
             .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
 
         // Capture mode: MCP owns stdio; never inherit.
-        let result = run::exec_capture(&ws, entry, &args.command)
+        let result = run::exec_capture(&ws, entry, &args.command, mode)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let out = serde_json::json!({
             "repo": result.repo_id,
             "path": result.path,
             "command": args.command,
+            "shell": want_shell,
             "exit_code": result.code(),
             "success": result.success(),
             "error": result.error,
@@ -435,29 +455,29 @@ impl PolyMcp {
 impl ServerHandler for PolyMcp {
     fn get_info(&self) -> ServerInfo {
         let exec_note = if self.allow_exec {
-            match &self.exec_repos {
+            let repos = match &self.exec_repos {
                 Some(set) => {
                     let mut ids: Vec<_> = set.iter().cloned().collect();
                     ids.sort();
-                    format!(
-                        "exec is ENABLED for allowlisted repos only: {}.",
-                        ids.join(", ")
-                    )
+                    format!("allowlisted repos: {}", ids.join(", "))
                 }
-                None => {
-                    "exec is ENABLED for all workspace repos (prefer plan first; no shell expansion)."
-                        .into()
-                }
-            }
+                None => "all workspace repos".into(),
+            };
+            let shell = if self.allow_shell {
+                "shell=true allowed (sh -c; use sparingly)"
+            } else {
+                "shell=false only (argv; safer)"
+            };
+            format!("exec ENABLED ({repos}; {shell}).")
         } else {
-            "exec is DISABLED (start with `poly mcp --allow-exec` and optionally `--exec-repos a,b`)."
+            "exec DISABLED (start with `poly mcp --allow-exec`[, `--exec-repos a,b`][, `--allow-shell`])."
                 .into()
         };
 
         let instructions = format!(
             "poly multi-repo workspace tools. Workflow: plan → build_context(format=prompt) → edit only selected repos. \
 Prefer the commit tool for git commits (not raw exec). Commit only in the correct product repo; meta/docs are context. \
-{exec_note} exec uses argv arrays (no shell). Avoid force-push/rm without user intent."
+{exec_note} Prefer argv arrays over shell. Avoid force-push/rm without user intent."
         );
 
         ServerInfo::new(

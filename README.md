@@ -33,6 +33,7 @@ cargo clippy --all-targets -- -D warnings
 | Unit tests | `src/**` (`#[cfg(test)]`) |
 | CLI e2e | `tests/cli_integration.rs` (temp multi-repo + `assert_cmd`) |
 | Lib e2e | `tests/lib_integration.rs` |
+| MCP protocol | `tests/mcp_protocol.rs` (stdio JSON-RPC: initialize, tools/list, tools/call) |
 | Fixtures | `tests/common/mod.rs` |
 
 CI runs on GitHub Actions (`.github/workflows/ci.yml`): fmt, clippy, test on macOS + Ubuntu.

@@ -149,8 +149,20 @@ poly status --repos core,app
 poly ctx --tags payments,oauth --format prompt
 poly ctx --role api --no-status
 poly ctx --repos core,app --max-chars 24000
-poly --help   # global help via clap subcommands: poly status --help
+poly ctx "login checkout" --with-deps    # smarter ranking + depends_on
+poly plan "login"                        # synonyms: login → oauth/auth repos
+poly --help
 ```
+
+### Query ranking (v0.7+)
+
+`poly ctx` / `poly plan` score repos using:
+
+- id / role / tags / description
+- lightweight **synonyms** (e.g. `login` → oauth/auth, `billing` → payments)
+- snippets of each repo’s `AGENTS.md` / `CLAUDE.md` / `README.md`
+- **multi-token coverage** (repos matching more query words rank higher)
+- weak floor so noisy one-off matches drop off
 
 Config discovery:
 
@@ -223,9 +235,9 @@ poly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
 
 ## Roadmap
 
-- Smarter query ranking for `poly ctx` / `build_context`
 - Optional shell mode (`sh -c`) behind an explicit flag
-- Optional MCP multi-repo `run` (still CLI-only)
+- Optional MCP multi-repo `run`
+- Configurable synonym dictionary in `poly.toml`
 
 ## License
 

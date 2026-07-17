@@ -158,6 +158,9 @@ struct CtxArgs {
     /// Skip live git status in the pack.
     #[serde(default)]
     no_status: Option<bool>,
+    /// Also include transitive depends_on of matched repos.
+    #[serde(default)]
+    with_deps: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -290,6 +293,7 @@ impl PolyMcp {
             args.role.as_deref(),
             args.max_chars,
             args.no_status.unwrap_or(false),
+            args.with_deps.unwrap_or(false),
         )
         .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 

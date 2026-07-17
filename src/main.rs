@@ -5,6 +5,7 @@ mod context;
 mod discover;
 mod mcp;
 mod plan;
+mod rank;
 mod run;
 mod status;
 
@@ -198,6 +199,7 @@ fn run() -> Result<ExitCode> {
             format,
             max_chars,
             no_status,
+            with_deps,
             config,
         } => {
             let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
@@ -209,6 +211,7 @@ fn run() -> Result<ExitCode> {
                 role.as_deref(),
                 max_chars,
                 no_status,
+                with_deps,
             )?;
             match format {
                 CtxFormat::Markdown => print!("{}", context::format_markdown(&pack)),

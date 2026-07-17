@@ -1,7 +1,9 @@
 use crate::config::{RepoEntry, Workspace, DEFAULT_CONTEXT_FILES};
+use crate::rank;
 use crate::status::{self, RepoStatus};
 use anyhow::Result;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -60,9 +62,13 @@ pub fn build_context(
     role_filter: Option<&str>,
     max_chars_override: Option<usize>,
     no_status: bool,
+    with_deps: bool,
 ) -> Result<ContextPack> {
     let max_chars = max_chars_override.unwrap_or_else(|| workspace.max_chars());
-    let selected = select_repos(workspace, query, repos_filter, tags_filter, role_filter);
+    let mut selected = select_repos(workspace, query, repos_filter, tags_filter, role_filter);
+    if with_deps {
+        selected = expand_with_deps(workspace, &selected);
+    }
     let selected_ids: Vec<String> = selected.iter().map(|r| r.id.clone()).collect();
 
     // Live status for selected (and for full meta listing we still may want status)
@@ -266,6 +272,32 @@ pub fn select_repos_scored<'a>(
 
     // Explicit filters only → equal score, reason = filter
     if repos_filter.is_some() || tags_filter.is_some() || role_filter.is_some() {
+        // If query also present, re-rank filtered set with smart ranker
+        if let Some(q) = query.map(str::trim).filter(|s| !s.is_empty()) {
+            let ranked = rank::rank_repos(workspace, q);
+            let allowed: HashSet<&str> = set.iter().map(|r| r.id.as_str()).collect();
+            let mut out: Vec<ScoredRepo<'_>> = ranked
+                .into_iter()
+                .filter(|r| allowed.contains(r.repo.id.as_str()))
+                .map(|r| ScoredRepo {
+                    repo: r.repo,
+                    score: r.score,
+                    reasons: r.reasons,
+                })
+                .collect();
+            // Keep filter-only repos that didn't score
+            for repo in set {
+                if !out.iter().any(|s| s.repo.id == repo.id) {
+                    out.push(ScoredRepo {
+                        repo,
+                        score: 1,
+                        reasons: vec!["filter".into()],
+                    });
+                }
+            }
+            return out;
+        }
+
         return set
             .into_iter()
             .map(|repo| {
@@ -304,7 +336,7 @@ pub fn select_repos_scored<'a>(
     }
 
     if let Some(q) = query {
-        let q = q.trim().to_lowercase();
+        let q = q.trim();
         if q.is_empty() {
             return set
                 .into_iter()
@@ -315,57 +347,14 @@ pub fn select_repos_scored<'a>(
                 })
                 .collect();
         }
-        let tokens: Vec<&str> = q.split_whitespace().collect();
-        let mut scored: Vec<ScoredRepo<'_>> = workspace
-            .repos
-            .iter()
-            .filter_map(|r| {
-                let mut score = 0i32;
-                let mut reasons = Vec::new();
-                let id = r.id.to_lowercase();
-                let role = r.role.as_deref().unwrap_or("").to_lowercase();
-                let desc = r.description.as_deref().unwrap_or("").to_lowercase();
-                let tags = r.tags.join(" ").to_lowercase();
-                for t in &tokens {
-                    if id == *t {
-                        score += 10;
-                        reasons.push(format!("id={id}"));
-                    } else if id.contains(t) {
-                        score += 5;
-                        reasons.push(format!("id~{t}"));
-                    }
-                    if role.contains(t) {
-                        score += 3;
-                        reasons.push(format!("role~{t}"));
-                    }
-                    if tags.split_whitespace().any(|tag| tag == *t || tag.contains(t)) {
-                        score += 4;
-                        reasons.push(format!("tag~{t}"));
-                    }
-                    if desc.contains(t) {
-                        score += 2;
-                        reasons.push(format!("desc~{t}"));
-                    }
-                }
-                reasons.sort();
-                reasons.dedup();
-                if score > 0 {
-                    Some(ScoredRepo {
-                        repo: r,
-                        score,
-                        reasons,
-                    })
-                } else {
-                    None
-                }
+        return rank::rank_repos(workspace, q)
+            .into_iter()
+            .map(|r| ScoredRepo {
+                repo: r.repo,
+                score: r.score,
+                reasons: r.reasons,
             })
             .collect();
-        scored.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
-                .then_with(|| a.repo.id.cmp(&b.repo.id))
-        });
-        return scored;
     }
 
     set.into_iter()
@@ -374,6 +363,29 @@ pub fn select_repos_scored<'a>(
             score: 0,
             reasons: vec!["all repos".into()],
         })
+        .collect()
+}
+
+/// Add transitive depends_on of selected repos (workspace-local only).
+pub fn expand_with_deps<'a>(
+    workspace: &'a Workspace,
+    selected: &[&'a RepoEntry],
+) -> Vec<&'a RepoEntry> {
+    let mut ids: HashSet<String> = selected.iter().map(|r| r.id.clone()).collect();
+    let mut stack: Vec<String> = ids.iter().cloned().collect();
+    while let Some(id) = stack.pop() {
+        if let Some(repo) = workspace.repos.iter().find(|r| r.id == id) {
+            for dep in &repo.depends_on {
+                if workspace.repos.iter().any(|r| &r.id == dep) && ids.insert(dep.clone()) {
+                    stack.push(dep.clone());
+                }
+            }
+        }
+    }
+    workspace
+        .repos
+        .iter()
+        .filter(|r| ids.contains(&r.id))
         .collect()
 }
 
@@ -625,7 +637,7 @@ mod tests {
     fn query_selects_payments() {
         let ws = sample_ws();
         let sel = select_repos(&ws, Some("payments"), None, None, None);
-        assert_eq!(sel.len(), 1);
+        assert!(!sel.is_empty());
         assert_eq!(sel[0].id, "api");
     }
 
@@ -636,5 +648,15 @@ mod tests {
         let sel = select_repos(&ws, None, None, Some(&tags), None);
         assert_eq!(sel.len(), 1);
         assert_eq!(sel[0].id, "web");
+    }
+
+    #[test]
+    fn expand_deps_includes_api() {
+        let ws = sample_ws();
+        let web = ws.repos.iter().find(|r| r.id == "web").unwrap();
+        let expanded = expand_with_deps(&ws, &[web]);
+        let ids: Vec<_> = expanded.iter().map(|r| r.id.as_str()).collect();
+        assert!(ids.contains(&"web"));
+        assert!(ids.contains(&"api"));
     }
 }

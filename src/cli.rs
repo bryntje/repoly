@@ -99,6 +99,9 @@ pub enum Commands {
         /// Skip live git status in the pack
         #[arg(long)]
         no_status: bool,
+        /// Also include transitive depends_on of matched repos
+        #[arg(long)]
+        with_deps: bool,
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
     },

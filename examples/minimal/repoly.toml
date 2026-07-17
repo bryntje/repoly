@@ -1,0 +1,25 @@
+# Minimal api + web polyrepo for demos and first-run.
+# Paths are relative to this file.
+schema_version = 1
+
+[workspace]
+name = "minimal"
+
+[context]
+always = ["docs/PLATFORM.md"]
+max_chars = 24000
+
+[[repos]]
+id = "api"
+path = "api"
+role = "api"
+tags = ["backend", "payments", "oauth", "identity"]
+description = "HTTP API"
+
+[[repos]]
+id = "web"
+path = "web"
+role = "frontend"
+tags = ["frontend", "oauth", "login"]
+depends_on = ["api"]
+description = "Web UI"

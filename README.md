@@ -4,218 +4,168 @@
 
 [![CI](https://github.com/bryntje/repoly/actions/workflows/ci.yml/badge.svg)](https://github.com/bryntje/repoly/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](./LICENSE-MIT)
+[![Version](https://img.shields.io/badge/version-0.1.0-informational.svg)](./CHANGELOG.md)
 
-`repoly` is a local, open-source CLI for polyrepo product stacks. It gives humans and AI coding CLIs (Grok, Claude Code, Codex, Aider, …) something IDEs already have: a machine-readable multi-root workspace with **cross-repo status** and **agent-ready context packs**.
+Local CLI for **polyrepo** product stacks. Gives humans and AI coding tools (Grok, Claude Code, Codex, …) what IDE multi-root workspaces already have: a machine-readable map of repos, cross-repo status, and **agent-ready context packs**.
 
 No cloud. No IDE required. No forks of your coding agent.
 
-**Public version:** `0.1.0` (first public release). See [CHANGELOG.md](./CHANGELOG.md).
+→ [Changelog](./CHANGELOG.md) · [MCP setup](./docs/mcp.md) · [Contributing](./CONTRIBUTING.md)
+
+---
 
 ## Install
 
+Requires **`git`** on `PATH`.
+
 ```bash
-# from source
+# From source (today)
 cargo install --path .
 
-# or build a release binary
+# Or build a release binary
 cargo build --release
 # → target/release/repoly
 ```
 
-Requires `git` on `PATH`.
-
-## Development & tests
+After launch packaging (GitHub Releases + crates.io):
 
 ```bash
-cargo test              # unit + integration
-cargo test -- --nocapture
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
+# Planned:
+# cargo install repoly
+# or download a release binary from GitHub Releases
 ```
 
-| Layer | Location |
-|-------|----------|
-| Unit tests | `src/**` (`#[cfg(test)]`) |
-| CLI e2e | `tests/cli_integration.rs` (temp multi-repo + `assert_cmd`) |
-| Lib e2e | `tests/lib_integration.rs` |
-| MCP protocol | `tests/mcp_protocol.rs` (stdio JSON-RPC: initialize, tools/list, tools/call) |
-| Fixtures | `tests/common/mod.rs` |
-
-CI runs on GitHub Actions (`.github/workflows/ci.yml`): fmt, clippy, test on macOS + Ubuntu.
-
-## Quickstart
+Check:
 
 ```bash
-cd /path/to/your/polyrepo-checkout
-repoly init                              # write repoly.toml skeleton
-# or:
-repoly init --from-code-workspace App.code-workspace
+repoly version   # → repoly 0.1.0
+```
 
+**Platforms:** macOS and Linux are first-class (CI). Windows is **experimental**.
+
+---
+
+## 30-second demo
+
+Use the bundled minimal workspace:
+
+```bash
+cd examples/minimal
 repoly validate
 repoly list
+repoly plan "oauth"
+repoly ctx --format prompt "payments" | head
+```
+
+Typical flow on your own stack:
+
+```bash
+cd /path/to/checkout-parent   # folder that contains all product repos
+repoly init                  # or: repoly init --from-code-workspace App.code-workspace
+# edit repoly.toml → point paths at your repos, add tags / depends_on
+
 repoly status
-repoly ctx "payments oauth"
-repoly ctx --format prompt "discord link" | pbcopy
+repoly plan "login checkout"
+repoly ctx --format prompt "login checkout" > /tmp/brief.md
 ```
 
-Point any coding CLI at a single repo **after** reading the pack:
+Then open a coding agent **in one repo**:
 
 ```bash
-repoly ctx --format prompt "premium checkout" > /tmp/brief.md
-cd innersync-dashboard && grok "Read /tmp/brief.md then fix …"
+repoly exec web -- grok "Read /tmp/brief.md; only change this repo unless asked."
+# or
+cd "$(repoly path web)" && claude
 ```
 
-Or inject directly:
+---
 
-```bash
-grok -- "$(repoly ctx --format prompt 'premium checkout')"
-```
+## Why repoly?
+
+| Approach | Gap |
+|----------|-----|
+| VS Code / Cursor multi-root | Great for humans; not a CLI/agent control plane |
+| myrepos / meta / gita | Batch git; no agent context packs |
+| Nx / Turborepo | Monorepo task graphs; wrong shape for many product polyrepos |
+| Parallel agent worktrees | Usually one repo; not cross-repo ownership |
+
+**repoly** = declarative polyrepo workspace + status + plan + context + optional scoped exec.
+
+---
 
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
-| `repoly init` | Create `repoly.toml` (optionally from `.code-workspace`) |
+| `repoly init` | Create `repoly.toml` (optional `--from-code-workspace`) |
 | `repoly validate` | Schema + path checks (`--strict`) |
 | `repoly list` | List repos (`--format json`) |
-| `repoly status` | Branch / dirty / ahead / behind (`--format json`, `--fetch`) |
-| `repoly plan [query]` | Which repos + depends_on order (`markdown` \| `prompt` \| `json`) |
-| `repoly ctx [query]` | Context pack (`markdown` \| `prompt` \| `json`) |
-| `repoly root` | Print workspace root |
-| `repoly path <repo>` | Print absolute path of a repo |
-| `repoly exec <repo> -- <cmd…>` | Run a command in one repo cwd |
-| `repoly commit <repo> -m "…"` | Safe git commit in workspace repo(s) |
-| `repoly run --repos a,b -- <cmd…>` | Run a command across repos |
-| `repoly mcp` | MCP stdio server (agent-native tools) |
-| `repoly version` | Version |
+| `repoly status` | Branch / dirty / ahead / behind |
+| `repoly plan [query]` | Which repos + `depends_on` order |
+| `repoly ctx [query]` | Context pack for humans/agents |
+| `repoly root` / `path <id>` | Scripting helpers |
+| `repoly exec <repo> -- <cmd…>` | Run in one repo cwd |
+| `repoly run --repos a,b -- <cmd…>` | Same command across repos |
+| `repoly commit …` | Safe git commit in workspace repo(s) |
+| `repoly mcp` | MCP stdio server |
 
-### MCP server (Grok / Claude / Cursor)
+### Common patterns
 
-Read-only tools for coding agents — no shell required for status/context:
+```bash
+# Ranking + order
+repoly plan "identity oauth"
+repoly ctx --format prompt "identity oauth"
+repoly ctx --with-deps --repos web --format markdown
 
-| Tool | Purpose |
-|------|---------|
-| `list_repos` | Workspace repo map |
-| `status` | Cross-repo git status |
-| `plan` | Repo selection + depends_on order |
-| `build_context` | Context pack (`prompt` / `markdown` / `json`) |
-| `repo_path` | Absolute path of a repo id |
-| `workspace_root` | Workspace root |
-| `exec` | Run argv in one repo cwd (**opt-in**) |
-| `run` | Same command across repos (**opt-in**, needs repos/tags/role) |
-| `commit` | Safe git commit in one repo (**opt-in**, same gate as exec) |
+# Execution
+repoly exec api -- npm test
+repoly run --repos api,web -- git status -sb
+repoly exec web --shell -- 'npm test && echo ok'   # shell is opt-in
 
-**Grok** (`~/.grok/config.toml`) — read-only (default):
+# Commits (only mapped repos)
+repoly commit web -m "fix: login redirect" --all
+repoly commit --repos api,web -m "chore: related fixes" --all --dry-run
+```
+
+**Exit codes:** `0` ok · `1` error · `2` partial · `3` no workspace.
+
+Child env: `REPOLY_WORKSPACE`, `REPOLY_ROOT`, `REPOLY_REPO`, `REPOLY_REPO_PATH`, `REPOLY_REPO_ROLE`.
+
+---
+
+## MCP (Grok / Claude / Cursor)
+
+Full guide: **[docs/mcp.md](./docs/mcp.md)**.
+
+**Read-only** (recommended default) — Grok `~/.grok/config.toml`:
 
 ```toml
 [mcp_servers.repoly]
 command = "repoly"
 args = ["mcp"]
-env = { REPOLY_CONFIG = "/Users/you/Dev/Projects/Github/repoly.toml" }
+env = { REPOLY_CONFIG = "/absolute/path/to/repoly.toml" }
 ```
 
-**With exec** (explicit; prefer a repo allowlist):
+**With mutation** (prefer allowlist):
 
 ```toml
 [mcp_servers.repoly]
 command = "repoly"
-args = ["mcp", "--allow-exec", "--exec-repos", "core,app"]
-env = { REPOLY_CONFIG = "/Users/you/Dev/Projects/Github/repoly.toml" }
-```
-
-Shell for MCP (double opt-in — more powerful, easier to misuse):
-
-```toml
-args = ["mcp", "--allow-exec", "--allow-shell", "--exec-repos", "app"]
+args = ["mcp", "--allow-exec", "--exec-repos", "api,web"]
+env = { REPOLY_CONFIG = "/absolute/path/to/repoly.toml" }
 ```
 
 ```bash
-# CLI equivalents
-repoly mcp --allow-exec
-repoly mcp --allow-exec --exec-repos core,app
-repoly mcp --allow-exec --allow-shell --exec-repos app
-
-grok mcp add repoly -- repoly mcp --allow-exec --exec-repos core,app
+grok mcp add repoly -- repoly mcp
+# or with exec:
+grok mcp add repoly -- repoly mcp --allow-exec --exec-repos api,web
 ```
 
-MCP `run` example (agent tool args):
+| Tool | Notes |
+|------|--------|
+| `list_repos`, `status`, `plan`, `build_context`, `repo_path`, `workspace_root` | Always available |
+| `exec`, `run`, `commit` | Need `--allow-exec` (+ `--allow-shell` for shell) |
 
-```json
-{
-  "repos": "core,app",
-  "command": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-  "parallel": false
-}
-```
-
-Safety notes:
-
-- `exec` / `run` / `commit` are **off** unless `--allow-exec`
-- `--exec-repos a,b` further restricts targets (every `run` target must be allowed)
-- Default launch is **argv** (`["git","status"]`) — no shell expansion
-- `--shell` / MCP `shell: true` needs an extra explicit flag (`--allow-shell` on MCP)
-- MCP `run` needs an explicit `repos` / `tags` / `role` filter (never all roots)
-
-### Run commands in repos
-
-```bash
-# One repo (stdio inherited — interactive CLIs work)
-repoly exec app -- npm test
-repoly exec core -- uv run pytest
-repoly exec app -- grok "fix the OAuth callback"
-
-# Shell mode (explicit; pipes / && / globs) — off by default
-repoly exec app --shell -- 'npm test && echo ok'
-repoly run --repos core,app --shell -- 'git status -sb | head -5'
-
-# Several repos, sequential
-repoly run --repos core,app -- git status -sb
-repoly run --tags backend -- git pull --ff-only
-
-# Parallel batch (captured output, labeled per repo)
-repoly run --repos core,app,mind --parallel -- git rev-parse --abbrev-ref HEAD
-
-# Dry-run
-repoly run --role frontend --dry-run -- npm run lint
-```
-
-Child processes receive:
-
-| Env | Value |
-|-----|--------|
-| `REPOLY_WORKSPACE` | workspace name |
-| `REPOLY_ROOT` | workspace root path |
-| `REPOLY_REPO` | repo id |
-| `REPOLY_REPO_PATH` | absolute repo path |
-| `REPOLY_REPO_ROLE` | role (if set) |
-
-### Useful flags
-
-```bash
-repoly status --repos core,app
-repoly ctx --tags payments,oauth --format prompt
-repoly ctx --role api --no-status
-repoly ctx --repos core,app --max-chars 24000
-repoly ctx "login checkout" --with-deps    # smarter ranking + depends_on
-repoly plan "login"                        # synonyms: login → oauth/auth repos
-repoly --help
-```
-
-### Query ranking (v0.7+)
-
-`repoly ctx` / `repoly plan` score repos using:
-
-- id / role / tags / description
-- lightweight **synonyms** (e.g. `login` → oauth/auth, `billing` → payments)
-- snippets of each repo’s `AGENTS.md` / `CLAUDE.md` / `README.md`
-- **multi-token coverage** (repos matching more query words rank higher)
-- weak floor so noisy one-off matches drop off
-
-Config discovery:
-
-1. `--config <path>`
-2. `$REPOLY_CONFIG`
-3. Walk up from CWD: `repoly.toml` or `.repoly/repoly.toml`
+---
 
 ## Config (`repoly.toml`)
 
@@ -226,8 +176,7 @@ schema_version = 1
 name = "acme"
 
 [context]
-always = ["docs/PLATFORM.md", "AGENTS.md"]
-status_doc = "docs/STATUS.md"
+always = ["docs/PLATFORM.md"]
 max_chars = 48000
 
 [[repos]]
@@ -241,55 +190,60 @@ description = "HTTP API"
 id = "web"
 path = "./web"
 role = "frontend"
-tags = ["frontend"]
+tags = ["frontend", "oauth"]
 depends_on = ["api"]
 description = "Web app"
 ```
 
-See [`repoly.toml.example`](./repoly.toml.example) and [`examples/innersync/repoly.toml`](./examples/innersync/repoly.toml).
+**Discovery:** `--config` → `$REPOLY_CONFIG` → walk-up `repoly.toml` or `.repoly/repoly.toml` (legacy `poly.toml` still accepted).
+
+Examples:
+
+- [`examples/minimal/`](./examples/minimal/) — api + web demo  
+- [`examples/innersync/repoly.toml`](./examples/innersync/repoly.toml) — larger multi-product layout  
+- [`repoly.toml.example`](./repoly.toml.example)
+
+`plan` / `ctx` rank by tags, id, role, description, light synonyms, and multi-token coverage.
+
+---
 
 ## Design principles
 
-- **Local-only** — no telemetry, no accounts
-- **Read-only MVP** — status + context never mutate product repos
-- **Adapter model** — agents stay single-cwd; `repoly` decides *where* and *what context*
-- **Stable JSON** — for scripts and agents
-- **Secret-aware skips** — refuses to pack `.env*`, `*secret*`, `*credential*`, key files
+- **Local-only** — no telemetry, no accounts  
+- **Adapter model** — agents stay single-cwd; repoly chooses *where* and *what context*  
+- **Safe defaults** — MCP mutation and shell are explicit opt-in  
+- **Stable JSON** — for scripts and agents  
+- **Secret-aware skips** — won’t pack `.env*`, `*secret*`, `*credential*` by default  
 
-## Exit codes
+---
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Usage / validation error |
-| 2 | Partial success (e.g. some repos missing) |
-| 3 | Workspace not found (message text) |
-
-### Plan → context → execute → commit
+## Development
 
 ```bash
-repoly plan "identity oauth"
-repoly ctx --repos core,styling,app,mind --format prompt "identity oauth"
-repoly exec core -- grok "…"
-
-# Commit only in the correct product repo
-repoly commit core -m "fix: identity link dual-write"
-repoly commit app -m "fix: oauth callback" --all
-repoly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
+cargo test --all
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
 ```
 
-`repoly commit` never touches repos outside the workspace map. It will **skip** when nothing is staged (unless you pass `--all` or pathspecs). No force-push; amend/no-verify are explicit flags only.
+| Layer | Location |
+|-------|----------|
+| Unit | `src/**` |
+| CLI e2e | `tests/cli_integration.rs` |
+| Lib e2e | `tests/lib_integration.rs` |
+| MCP protocol | `tests/mcp_protocol.rs` |
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Security: [SECURITY.md](./SECURITY.md).
+
+---
 
 ## Roadmap
 
-- Configurable synonym dictionary in `repoly.toml`
-- Optional `repoly.toml` exec policy (default allowlist)
+- GitHub Release binaries + `cargo install repoly` (launch packaging)
+- `repoly doctor`
+- Configurable synonyms / exec policy in `repoly.toml`
+- Homebrew (later)
 
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Please run `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --all` before opening a PR.
-
-Security reports: [SECURITY.md](./SECURITY.md).
+---
 
 ## License
 

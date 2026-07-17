@@ -4,7 +4,8 @@
 
 [![CI](https://github.com/bryntje/repoly/actions/workflows/ci.yml/badge.svg)](https://github.com/bryntje/repoly/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](./LICENSE-MIT)
-[![Version](https://img.shields.io/badge/version-0.1.0-informational.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.1-informational.svg)](./CHANGELOG.md)
+[![Crates.io](https://img.shields.io/crates/v/repoly.svg)](https://crates.io/crates/repoly)
 
 Local CLI for **polyrepo** product stacks. Gives humans and AI coding tools (Grok, Claude Code, Codex, …) what IDE multi-root workspaces already have: a machine-readable map of repos, cross-repo status, and **agent-ready context packs**.
 
@@ -51,7 +52,12 @@ cargo install repoly
 Check:
 
 ```bash
-repoly version   # → repoly 0.1.0
+repoly version   # → repoly 0.1.1
+```
+
+```bash
+# crates.io (primary for most users)
+cargo install repoly
 ```
 
 **Platforms:** macOS and Linux are first-class (CI on every push). Windows binaries may be built on release tags, but Windows is **experimental** (not in PR CI — it was hanging on full `cargo test`).

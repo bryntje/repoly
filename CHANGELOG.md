@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [0.1.1] — 2026-07-17
 
-- GitHub Actions **Release** workflow: multi-platform binaries + checksums on `v*` tags
+### Fixed
+
+- Windows release packaging (PowerShell `Compress-Archive` instead of missing `zip`)
+- Intel macOS builds no longer wait on scarce `macos-13` runners (cross-target on `macos-latest`)
+- CI: drop hung Windows test job; cancel superseded workflow runs
+- crates.io keywords include `repoly`
+
+### Changed
+
+- GitHub Actions bumped toward Node 24-friendly versions (`checkout`/`upload-artifact`/`download-artifact`)
 
 ## [0.1.0] — 2026-07-17
 
@@ -41,5 +50,6 @@ First **public** release of `repoly` (internal dogfood history through 0.10.x is
 - Binary distribution: GitHub Releases on `v*` tags (macOS arm/x64, Linux x64, Windows x64).
 - crates.io: `cargo install repoly` after publish.
 
-[Unreleased]: https://github.com/bryntje/repoly/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/bryntje/repoly/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/bryntje/repoly/releases/tag/v0.1.1
 [0.1.0]: https://github.com/bryntje/repoly/releases/tag/v0.1.0

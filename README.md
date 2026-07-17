@@ -54,7 +54,7 @@ Check:
 repoly version   # → repoly 0.1.0
 ```
 
-**Platforms:** macOS and Linux are first-class (CI). Windows binaries are built but support is **experimental**.
+**Platforms:** macOS and Linux are first-class (CI on every push). Windows binaries may be built on release tags, but Windows is **experimental** (not in PR CI — it was hanging on full `cargo test`).
 
 ---
 

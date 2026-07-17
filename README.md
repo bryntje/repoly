@@ -77,7 +77,8 @@ Read-only tools for coding agents — no shell required for status/context:
 | `build_context` | Context pack (`prompt` / `markdown` / `json`) |
 | `repo_path` | Absolute path of a repo id |
 | `workspace_root` | Workspace root |
-| `exec` | Run argv in a repo cwd (**opt-in**) |
+| `exec` | Run argv in one repo cwd (**opt-in**) |
+| `run` | Same command across repos (**opt-in**, needs repos/tags/role) |
 | `commit` | Safe git commit in one repo (**opt-in**, same gate as exec) |
 
 **Grok** (`~/.grok/config.toml`) — read-only (default):
@@ -113,13 +114,23 @@ poly mcp --allow-exec --allow-shell --exec-repos app
 grok mcp add poly -- poly mcp --allow-exec --exec-repos core,app
 ```
 
+MCP `run` example (agent tool args):
+
+```json
+{
+  "repos": "core,app",
+  "command": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+  "parallel": false
+}
+```
+
 Safety notes:
 
-- `exec` is **off** unless `--allow-exec`
-- `--exec-repos a,b` further restricts targets
+- `exec` / `run` / `commit` are **off** unless `--allow-exec`
+- `--exec-repos a,b` further restricts targets (every `run` target must be allowed)
 - Default launch is **argv** (`["git","status"]`) — no shell expansion
 - `--shell` / MCP `shell: true` needs an extra explicit flag (`--allow-shell` on MCP)
-- `poly run` multi-repo remains CLI-only (no MCP multi-run yet)
+- MCP `run` needs an explicit `repos` / `tags` / `role` filter (never all roots)
 
 ### Run commands in repos
 
@@ -247,8 +258,8 @@ poly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
 
 ## Roadmap
 
-- Optional MCP multi-repo `run`
 - Configurable synonym dictionary in `poly.toml`
+- Optional `poly.toml` exec policy (default allowlist)
 
 ## License
 

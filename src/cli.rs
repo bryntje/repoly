@@ -231,13 +231,13 @@ pub enum Commands {
     Mcp {
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
-        /// Expose the `exec` / `commit` tools
+        /// Expose the `exec` / `run` / `commit` tools
         #[arg(long)]
         allow_exec: bool,
-        /// Comma-separated repo ids that `exec`/`commit` may target (requires --allow-exec)
+        /// Comma-separated repo ids that exec/run/commit may target (requires --allow-exec)
         #[arg(long, value_name = "IDS")]
         exec_repos: Option<String>,
-        /// Allow MCP exec with shell=true (`sh -c`). Requires --allow-exec.
+        /// Allow MCP exec/run with shell=true (`sh -c`). Requires --allow-exec.
         #[arg(long)]
         allow_shell: bool,
     },

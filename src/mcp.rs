@@ -103,17 +103,23 @@ impl PolyMcp {
         })
     }
 
-    fn assert_exec_allowed(&self, repo_id: &str) -> Result<(), McpError> {
+    fn assert_exec_enabled(&self) -> Result<(), McpError> {
         if !self.allow_exec {
             return Err(McpError::invalid_params(
-                "exec is disabled; restart the server with `poly mcp --allow-exec` \
-                 (optionally `--exec-repos a,b` to restrict targets)",
+                "exec/run/commit are disabled; restart with `poly mcp --allow-exec` \
+                 (optionally `--exec-repos a,b`, `--allow-shell`)",
                 None,
             ));
         }
+        Ok(())
+    }
+
+    fn assert_exec_allowed(&self, repo_id: &str) -> Result<(), McpError> {
+        self.assert_exec_enabled()?;
         if let Some(ref allow) = self.exec_repos {
             if !allow.contains(repo_id) {
-                let list: Vec<_> = allow.iter().cloned().collect();
+                let mut list: Vec<_> = allow.iter().cloned().collect();
+                list.sort();
                 return Err(McpError::invalid_params(
                     format!(
                         "repo '{repo_id}' is not in the exec allowlist (allowed: {})",
@@ -124,6 +130,16 @@ impl PolyMcp {
             }
         }
         Ok(())
+    }
+
+    fn resolve_shell_mode(&self, want_shell: bool) -> Result<run::LaunchMode, McpError> {
+        if want_shell && !self.allow_shell {
+            return Err(McpError::invalid_params(
+                "shell mode is disabled; restart with `poly mcp --allow-exec --allow-shell`",
+                None,
+            ));
+        }
+        Ok(run::LaunchMode::from_shell_flag(want_shell))
     }
 }
 
@@ -211,6 +227,30 @@ struct ExecArgs {
     /// Run via sh -c / cmd /C. Requires server `--allow-shell`. Prefer false.
     #[serde(default)]
     shell: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RunArgs {
+    /// Comma-separated repo ids (at least one of repos/tags/role required).
+    #[serde(default)]
+    repos: Option<String>,
+    /// Comma-separated tags; match any.
+    #[serde(default)]
+    tags: Option<String>,
+    /// Filter by role.
+    #[serde(default)]
+    role: Option<String>,
+    /// Command argv, e.g. ["git", "status", "-sb"].
+    command: Vec<String>,
+    /// Run via sh -c / cmd /C. Requires `--allow-shell`.
+    #[serde(default)]
+    shell: Option<bool>,
+    /// Run repos in parallel (captured). Default false (sequential).
+    #[serde(default)]
+    parallel: Option<bool>,
+    /// Continue after a failure (sequential mode). Default false.
+    #[serde(default)]
+    continue_on_error: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -378,7 +418,7 @@ impl PolyMcp {
 
     #[tool(
         name = "exec",
-        description = "Run a command in one repo's working directory (no shell). Requires the server to be started with --allow-exec. Optional --exec-repos restricts targets. Prefer argv form: command=[\"git\",\"status\",\"-sb\"]."
+        description = "Run a command in one repo's working directory. Requires --allow-exec. Prefer argv command=[\"git\",\"status\",\"-sb\"]; shell=true needs --allow-shell."
     )]
     async fn exec_cmd(&self, Parameters(args): Parameters<ExecArgs>) -> Result<String, McpError> {
         self.assert_exec_allowed(&args.repo)?;
@@ -390,13 +430,7 @@ impl PolyMcp {
         }
 
         let want_shell = args.shell.unwrap_or(false);
-        if want_shell && !self.allow_shell {
-            return Err(McpError::invalid_params(
-                "shell exec is disabled; restart with `poly mcp --allow-exec --allow-shell`",
-                None,
-            ));
-        }
-        let mode = run::LaunchMode::from_shell_flag(want_shell);
+        let mode = self.resolve_shell_mode(want_shell)?;
 
         let ws = self.load_ws()?;
         let entry = run::resolve_repo(&ws, &args.repo)
@@ -416,6 +450,101 @@ impl PolyMcp {
             "error": result.error,
             "stdout": result.stdout.unwrap_or_default(),
             "stderr": result.stderr.unwrap_or_default(),
+        });
+        Ok(serde_json::to_string_pretty(&out).unwrap_or_default())
+    }
+
+    #[tool(
+        name = "run",
+        description = "Run the same command across multiple workspace repos (like poly run). Requires --allow-exec. Must pass repos and/or tags and/or role. Each target must be on --exec-repos allowlist if set. Always captures output. Prefer sequential (parallel=false)."
+    )]
+    async fn run_cmd(&self, Parameters(args): Parameters<RunArgs>) -> Result<String, McpError> {
+        self.assert_exec_enabled()?;
+        if args.command.is_empty() {
+            return Err(McpError::invalid_params(
+                "command must be a non-empty argv array",
+                None,
+            ));
+        }
+
+        let want_shell = args.shell.unwrap_or(false);
+        let mode = self.resolve_shell_mode(want_shell)?;
+        let parallel = args.parallel.unwrap_or(false);
+        let continue_on_error = args.continue_on_error.unwrap_or(false);
+
+        let ws = self.load_ws()?;
+        let selected = run::select_repos(
+            &ws,
+            parse_csv(args.repos.as_deref()).as_deref(),
+            parse_csv(args.tags.as_deref()).as_deref(),
+            args.role.as_deref(),
+        )
+        .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+
+        // Enforce allowlist on every target
+        for repo in &selected {
+            self.assert_exec_allowed(&repo.id)?;
+        }
+
+        // MCP must capture stdio. Sequential: exec_capture loop.
+        // Parallel: existing run_many parallel path already captures.
+        let results = if parallel && selected.len() > 1 {
+            run::run_many(
+                &ws,
+                &selected,
+                &args.command,
+                true,
+                continue_on_error,
+                false,
+                mode,
+            )
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+        } else {
+            let mut out = Vec::new();
+            for repo in &selected {
+                let r = run::exec_capture(&ws, repo, &args.command, mode)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                let ok = r.success();
+                out.push(r);
+                if !ok && !continue_on_error {
+                    break;
+                }
+            }
+            out
+        };
+
+        let rows: Vec<_> = results
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "repo": r.repo_id,
+                    "path": r.path,
+                    "exit_code": r.code(),
+                    "success": r.success(),
+                    "error": r.error,
+                    "stdout": r.stdout.clone().unwrap_or_default(),
+                    "stderr": r.stderr.clone().unwrap_or_default(),
+                })
+            })
+            .collect();
+
+        let all_ok = results.iter().all(|r| r.success());
+        let any_ok = results.iter().any(|r| r.success());
+        let summary = if all_ok {
+            "ok"
+        } else if any_ok {
+            "partial"
+        } else {
+            "failed"
+        };
+
+        let out = serde_json::json!({
+            "command": args.command,
+            "shell": want_shell,
+            "parallel": parallel,
+            "summary": summary,
+            "repos": selected.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
+            "results": rows,
         });
         Ok(serde_json::to_string_pretty(&out).unwrap_or_default())
     }
@@ -468,15 +597,15 @@ impl ServerHandler for PolyMcp {
             } else {
                 "shell=false only (argv; safer)"
             };
-            format!("exec ENABLED ({repos}; {shell}).")
+            format!("exec/run/commit ENABLED ({repos}; {shell}).")
         } else {
-            "exec DISABLED (start with `poly mcp --allow-exec`[, `--exec-repos a,b`][, `--allow-shell`])."
+            "exec/run/commit DISABLED (start with `poly mcp --allow-exec`[, `--exec-repos a,b`][, `--allow-shell`])."
                 .into()
         };
 
         let instructions = format!(
             "poly multi-repo workspace tools. Workflow: plan → build_context(format=prompt) → edit only selected repos. \
-Prefer the commit tool for git commits (not raw exec). Commit only in the correct product repo; meta/docs are context. \
+Use run for the same command across multiple repos (requires repos/tags/role). Prefer commit for git commits. \
 {exec_note} Prefer argv arrays over shell. Avoid force-push/rm without user intent."
         );
 

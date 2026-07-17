@@ -32,6 +32,9 @@ pub struct RepolyFile {
     /// Optional workspace-level safety defaults (MCP session flags still win).
     #[serde(default)]
     pub policy: PolicySection,
+    /// Optional ranking / synonym tuning for plan & ctx.
+    #[serde(default)]
+    pub ranking: RankingSection,
     #[serde(default)]
     pub repos: Vec<RepoEntry>,
 }
@@ -89,6 +92,24 @@ fn default_true() -> bool {
     true
 }
 
+/// Optional `[ranking]` — workspace-specific synonym groups for plan/ctx queries.
+///
+/// Each group is a list of equivalent terms: if the query hits any member, all
+/// members are used as match variants (merged with built-in expand_token).
+///
+/// ```toml
+/// [ranking]
+/// synonym_groups = [
+///   ["reflection", "reflections", "growth", "checkin"],
+///   ["billing", "invoice", "stripe"],
+/// ]
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct RankingSection {
+    #[serde(default)]
+    pub synonym_groups: Vec<Vec<String>>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RepoEntry {
     pub id: String,
@@ -114,6 +135,7 @@ pub struct Workspace {
     pub config_path: PathBuf,
     pub context: ContextSection,
     pub policy: PolicySection,
+    pub ranking: RankingSection,
     pub repos: Vec<RepoEntry>,
 }
 
@@ -216,6 +238,7 @@ pub fn load_config(path: &Path) -> Result<Workspace, ConfigError> {
         config_path: path.to_path_buf(),
         context: file.context,
         policy: file.policy,
+        ranking: file.ranking,
         repos: file.repos,
     })
 }

@@ -8,8 +8,8 @@ use std::path::Path;
 /// Max bytes of each context file used for content matching.
 const SNIPPET_BYTES: usize = 12_000;
 
-/// Expand a query token with lightweight synonyms (English polyrepo/product terms).
-pub fn expand_token(token: &str) -> Vec<String> {
+/// Expand a query token with built-in synonyms (English polyrepo/product terms).
+pub fn expand_token_builtin(token: &str) -> Vec<String> {
     let t = token.to_lowercase();
     let mut out = vec![t.clone()];
     let extra: &[&str] = match t.as_str() {
@@ -27,8 +27,22 @@ pub fn expand_token(token: &str) -> Vec<String> {
         "agent" | "agents" | "hermit" | "hermes" => {
             &["agents", "agent", "hermit", "memory", "vault"]
         }
-        "reflection" | "reflections" | "journal" => {
-            &["reflections", "reflection", "journal", "encryption"]
+        "reflection" | "reflections" | "journal" | "growth" | "checkin" | "growthcheckin"
+        | "growth-checkin" => &[
+            "reflections",
+            "reflection",
+            "journal",
+            "encryption",
+            "growth",
+            "checkin",
+            "growthcheckin",
+        ],
+        // Only helps if tags/desc mention these; still empty for pure "fix the bug"
+        "bug" | "bugs" | "fix" | "hotfix" | "issue" | "issues" => {
+            &["bug", "bugs", "fix", "hotfix", "issue", "issues"]
+        }
+        "perf" | "performance" | "latency" | "slow" => {
+            &["performance", "perf", "latency", "slow"]
         }
         "telemetry" | "metrics" | "ops" | "cockpit" => {
             &["telemetry", "metrics", "ops", "mind", "railway"]
@@ -45,11 +59,39 @@ pub fn expand_token(token: &str) -> Vec<String> {
         _ => &[],
     };
     for e in extra {
-        if !out.iter().any(|x| x == e) {
-            out.push((*e).to_string());
+        push_unique(&mut out, e);
+    }
+    out
+}
+
+/// Built-in expand (backward-compatible name).
+pub fn expand_token(token: &str) -> Vec<String> {
+    expand_token_builtin(token)
+}
+
+/// Expand a token using built-ins plus workspace `[ranking].synonym_groups`.
+pub fn expand_token_for(workspace: &Workspace, token: &str) -> Vec<String> {
+    let mut out = expand_token_builtin(token);
+    let t = token.to_lowercase();
+    for group in &workspace.ranking.synonym_groups {
+        let members: Vec<String> = group
+            .iter()
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if members.iter().any(|m| m == &t) {
+            for m in members {
+                push_unique(&mut out, &m);
+            }
         }
     }
     out
+}
+
+fn push_unique(out: &mut Vec<String>, s: &str) {
+    if !out.iter().any(|x| x == s) {
+        out.push(s.to_string());
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -96,11 +138,11 @@ pub fn rank_repos<'a>(workspace: &'a Workspace, query: &str) -> Vec<RankedRepo<'
         let file_blob = load_repo_snippet(workspace, repo);
 
         for (ti, token) in original_tokens.iter().enumerate() {
-            let variants = expand_token(token);
             let mut token_structured = 0i32;
             let mut token_file = 0i32;
             let mut token_reasons: Vec<String> = Vec::new();
 
+            let variants = expand_token_for(workspace, token);
             for v in &variants {
                 let is_primary = v == token;
 
@@ -272,6 +314,7 @@ mod tests {
             config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
             policy: Default::default(),
+            ranking: Default::default(),
             repos: vec![
                 RepoEntry {
                     id: "core".into(),
@@ -326,5 +369,47 @@ mod tests {
     fn expand_oauth() {
         let v = expand_token("oauth");
         assert!(v.iter().any(|x| x == "auth"));
+    }
+
+    #[test]
+    fn expand_growth_in_reflection_cluster() {
+        let v = expand_token("growth");
+        assert!(v.iter().any(|x| x == "reflections"));
+    }
+
+    #[test]
+    fn workspace_synonym_groups_merge() {
+        let mut w = ws();
+        w.ranking.synonym_groups = vec![vec![
+            "billing".into(),
+            "invoice".into(),
+            "stripe".into(),
+        ]];
+        // tag "payments" on core won't hit; add stripe tag via group → need a repo with stripe tag
+        w.repos[0].tags.push("stripe".into());
+        let ranked = rank_repos(&w, "invoice");
+        assert!(
+            ranked.iter().any(|r| r.repo.id == "core"),
+            "expected core via config synonym invoice→stripe tag, got {:?}",
+            ranked.iter().map(|r| &r.repo.id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn hermit_style_reflection_tag() {
+        let mut w = ws();
+        w.repos.push(RepoEntry {
+            id: "hermit".into(),
+            path: "./hermit".into(),
+            role: Some("agent".into()),
+            tags: vec!["hermit".into(), "reflections".into(), "growth".into()],
+            depends_on: vec!["core".into()],
+            description: Some("Agent host".into()),
+            context_files: None,
+        });
+        let ranked = rank_repos(&w, "reflection related");
+        let ids: Vec<_> = ranked.iter().map(|r| r.repo.id.as_str()).collect();
+        assert!(ids.contains(&"app"), "{ids:?}");
+        assert!(ids.contains(&"hermit"), "{ids:?}");
     }
 }

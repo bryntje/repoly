@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-17
+
+### Added
+
+- **`[ranking].synonym_groups`** in `repoly.toml` — workspace-specific term clusters for plan/ctx (merged with built-ins)
+- Built-in synonym clusters expanded: growth/checkin ↔ reflections; bug/fix/issue; perf/latency
+- Docs/examples note optional `[ranking]` section
+
 ## [0.2.0] — 2026-07-17
 
 Security **layer 2**: path confinement, command policy, resource limits, richer context skips, optional audit. Generic for any polyrepo — no product-specific defaults.
@@ -79,7 +87,8 @@ First **public** release of `repoly` (internal dogfood history through 0.10.x is
 - Binary distribution: GitHub Releases on `v*` tags (macOS arm/x64, Linux x64, Windows x64).
 - crates.io: `cargo install repoly` after publish.
 
-[Unreleased]: https://github.com/bryntje/repoly/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/bryntje/repoly/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/bryntje/repoly/releases/tag/v0.2.1
 [0.2.0]: https://github.com/bryntje/repoly/releases/tag/v0.2.0
 [0.1.1]: https://github.com/bryntje/repoly/releases/tag/v0.1.1
 [0.1.0]: https://github.com/bryntje/repoly/releases/tag/v0.1.0

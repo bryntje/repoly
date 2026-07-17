@@ -64,6 +64,12 @@ use_builtin_secret_filters = true
 exec_timeout_secs = 120
 exec_max_output_bytes = 262144
 # audit_log = ".repoly/audit.jsonl"
+
+# Optional plan/ctx synonym groups (merged with built-ins)
+# [ranking]
+# synonym_groups = [
+#   ["billing", "invoice", "stripe"],
+# ]
 ```
 
 Shell for agents (double opt-in). **Bin policy must be inactive** for `shell=true` to work — pass `--no-default-exec-deny` and do not set bin allow/deny lists:

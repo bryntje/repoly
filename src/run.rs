@@ -693,6 +693,7 @@ mod tests {
             config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
             policy: Default::default(),
+            ranking: Default::default(),
             repos: vec![
                 RepoEntry {
                     id: "api".into(),

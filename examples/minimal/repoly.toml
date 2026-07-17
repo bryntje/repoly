@@ -15,6 +15,12 @@ max_chars = 24000
 # exec_timeout_secs = 120
 # exec_max_output_bytes = 262144
 
+# Optional plan/ctx synonym groups (merged with built-ins)
+# [ranking]
+# synonym_groups = [
+#   ["billing", "invoice", "stripe"],
+# ]
+
 [[repos]]
 id = "api"
 path = "api"

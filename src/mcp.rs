@@ -2,6 +2,7 @@
 //!
 //! Read-only tools by default. Optional `exec` when started with `--allow-exec`.
 
+use crate::commit;
 use crate::config::{find_config, load_config, Workspace};
 use crate::context;
 use crate::plan;
@@ -199,6 +200,32 @@ struct ExecArgs {
     command: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct CommitArgs {
+    /// Repo id to commit in (must be allowlisted when --exec-repos is set).
+    repo: String,
+    /// Commit message (required, non-empty).
+    message: String,
+    /// Run `git add -A` before commit.
+    #[serde(default)]
+    all: Option<bool>,
+    /// Pathspecs to stage (relative to repo root). Do not combine with all=true.
+    #[serde(default)]
+    paths: Option<Vec<String>>,
+    /// Amend HEAD.
+    #[serde(default)]
+    amend: Option<bool>,
+    /// Allow empty commit.
+    #[serde(default)]
+    allow_empty: Option<bool>,
+    /// Skip hooks.
+    #[serde(default)]
+    no_verify: Option<bool>,
+    /// Add Signed-off-by.
+    #[serde(default)]
+    signoff: Option<bool>,
+}
+
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 #[tool_router]
@@ -368,6 +395,36 @@ impl PolyMcp {
         });
         Ok(serde_json::to_string_pretty(&out).unwrap_or_default())
     }
+
+    #[tool(
+        name = "commit",
+        description = "Create a git commit in one workspace repo. Requires --allow-exec (and --exec-repos allowlist if set). Prefer this over exec for commits: safer defaults, no shell, skips when nothing staged unless all=true."
+    )]
+    async fn commit_cmd(
+        &self,
+        Parameters(args): Parameters<CommitArgs>,
+    ) -> Result<String, McpError> {
+        self.assert_exec_allowed(&args.repo)?;
+        let ws = self.load_ws()?;
+        let entry = run::resolve_repo(&ws, &args.repo)
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+
+        let opts = commit::CommitOpts {
+            message: args.message,
+            all: args.all.unwrap_or(false),
+            paths: args.paths.unwrap_or_default(),
+            amend: args.amend.unwrap_or(false),
+            allow_empty: args.allow_empty.unwrap_or(false),
+            no_verify: args.no_verify.unwrap_or(false),
+            dry_run: false,
+            signoff: args.signoff.unwrap_or(false),
+        };
+
+        let result = commit::commit_one(&ws, entry, &opts)
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+
+        Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
+    }
 }
 
 #[tool_handler]
@@ -395,8 +452,8 @@ impl ServerHandler for PolyMcp {
 
         let instructions = format!(
             "poly multi-repo workspace tools. Workflow: plan → build_context(format=prompt) → edit only selected repos. \
-Commit in the correct product repo; meta/docs are context. Use repo_path for cwd. \
-{exec_note} Commands use argv arrays (no shell). Prefer git/npm/pytest-style tools; avoid destructive force-push/rm without user intent."
+Prefer the commit tool for git commits (not raw exec). Commit only in the correct product repo; meta/docs are context. \
+{exec_note} exec uses argv arrays (no shell). Avoid force-push/rm without user intent."
         );
 
         ServerInfo::new(

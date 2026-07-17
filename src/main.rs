@@ -1,4 +1,5 @@
 mod cli;
+mod commit;
 mod config;
 mod context;
 mod discover;
@@ -230,6 +231,52 @@ fn run() -> Result<ExitCode> {
             }
             println!("{}", path.display());
             Ok(ExitCode::SUCCESS)
+        }
+        Commands::Commit {
+            repo,
+            message,
+            all,
+            paths,
+            repos,
+            tags,
+            role,
+            amend,
+            allow_empty,
+            no_verify,
+            signoff,
+            dry_run,
+            config,
+        } => {
+            let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
+            let targets = commit::resolve_targets(
+                &workspace,
+                repo.as_deref(),
+                parse_csv(repos.as_deref()).as_deref(),
+                parse_csv(tags.as_deref()).as_deref(),
+                role.as_deref(),
+            )?;
+            let opts = commit::CommitOpts {
+                message,
+                all,
+                paths,
+                amend,
+                allow_empty,
+                no_verify,
+                dry_run,
+                signoff,
+            };
+            let results = commit::commit_many(&workspace, &targets, &opts)?;
+            // Human-readable stdout for single-repo success details
+            for r in &results {
+                if !r.stdout.is_empty() {
+                    print!("{}", r.stdout);
+                }
+                if !r.stderr.is_empty() && !r.success {
+                    eprint!("{}", r.stderr);
+                }
+            }
+            commit::print_results(&results);
+            Ok(ExitCode::from(commit::exit_code(&results)))
         }
         Commands::Exec {
             repo,

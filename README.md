@@ -60,6 +60,7 @@ grok -- "$(poly ctx --format prompt 'premium checkout')"
 | `poly root` | Print workspace root |
 | `poly path <repo>` | Print absolute path of a repo |
 | `poly exec <repo> -- <cmd…>` | Run a command in one repo cwd |
+| `poly commit <repo> -m "…"` | Safe git commit in workspace repo(s) |
 | `poly run --repos a,b -- <cmd…>` | Run a command across repos |
 | `poly mcp` | MCP stdio server (agent-native tools) |
 | `poly version` | Version |
@@ -76,7 +77,8 @@ Read-only tools for coding agents — no shell required for status/context:
 | `build_context` | Context pack (`prompt` / `markdown` / `json`) |
 | `repo_path` | Absolute path of a repo id |
 | `workspace_root` | Workspace root |
-| `exec` | Run argv in a repo cwd (**opt-in**, see below) |
+| `exec` | Run argv in a repo cwd (**opt-in**) |
+| `commit` | Safe git commit in one repo (**opt-in**, same gate as exec) |
 
 **Grok** (`~/.grok/config.toml`) — read-only (default):
 
@@ -204,13 +206,20 @@ See [`poly.toml.example`](./poly.toml.example) and [`examples/innersync/poly.tom
 | 2 | Partial success (e.g. some repos missing) |
 | 3 | Workspace not found (message text) |
 
-### Plan → context → execute
+### Plan → context → execute → commit
 
 ```bash
 poly plan "identity oauth"
 poly ctx --repos core,styling,app,mind --format prompt "identity oauth"
 poly exec core -- grok "…"
+
+# Commit only in the correct product repo
+poly commit core -m "fix: identity link dual-write"
+poly commit app -m "fix: oauth callback" --all
+poly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
 ```
+
+`poly commit` never touches repos outside the workspace map. It will **skip** when nothing is staged (unless you pass `--all` or pathspecs). No force-push; amend/no-verify are explicit flags only.
 
 ## Roadmap
 

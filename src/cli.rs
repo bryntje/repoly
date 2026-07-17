@@ -114,6 +114,51 @@ pub enum Commands {
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
     },
+    /// Create a git commit in one or more workspace repos
+    ///
+    /// Examples:
+    ///   `poly commit app -m "fix oauth callback"`
+    ///   `poly commit app -m "wip" --all`
+    ///   `poly commit --repos core,app -m "chore: bump" --all`
+    Commit {
+        /// Single repo id (alternative to --repos/--tags/--role)
+        repo: Option<String>,
+        /// Commit message (required)
+        #[arg(short = 'm', long)]
+        message: String,
+        /// `git add -A` before commit
+        #[arg(long, short = 'a')]
+        all: bool,
+        /// Stage these pathspecs (relative to each repo) instead of --all
+        #[arg(long = "path", value_name = "PATH")]
+        paths: Vec<String>,
+        /// Comma-separated repo ids
+        #[arg(long)]
+        repos: Option<String>,
+        /// Include repos matching any of these tags
+        #[arg(long)]
+        tags: Option<String>,
+        /// Include repos with this role
+        #[arg(long)]
+        role: Option<String>,
+        /// Amend HEAD (use carefully)
+        #[arg(long)]
+        amend: bool,
+        /// Allow empty commit
+        #[arg(long)]
+        allow_empty: bool,
+        /// Skip hooks (--no-verify)
+        #[arg(long)]
+        no_verify: bool,
+        /// Add Signed-off-by
+        #[arg(long, short = 's')]
+        signoff: bool,
+        /// Print git actions without running them
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+    },
     /// Run a command in one repo's working directory
     ///
     /// Example: `poly exec app -- npm test`

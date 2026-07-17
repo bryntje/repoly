@@ -9,7 +9,7 @@ repository = "https://github.com/bryntje/repoly"
 homepage = "https://github.com/bryntje/repoly"
 documentation = "https://github.com/bryntje/repoly#readme"
 authors = ["Bryan D'haen"]
-keywords = ["polyrepo", "multi-repo", "git", "cli", "workspace"]
+keywords = ["repoly", "polyrepo", "multi-repo", "git", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = ["target/", ".git/"]
 

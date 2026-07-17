@@ -10,11 +10,11 @@ use crate::run;
 use crate::status;
 use anyhow::{Context as _, Result};
 use rmcp::{
-    ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{Implementation, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
     transport::stdio,
+    ErrorData as McpError, ServerHandler, ServiceExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -359,15 +359,14 @@ impl PolyMcp {
         name = "repo_path",
         description = "Return the absolute filesystem path of a poly repo by id."
     )]
-    async fn repo_path(&self, Parameters(args): Parameters<RepoIdArgs>) -> Result<String, McpError> {
+    async fn repo_path(
+        &self,
+        Parameters(args): Parameters<RepoIdArgs>,
+    ) -> Result<String, McpError> {
         let ws = self.load_ws()?;
-        let repo = ws
-            .repos
-            .iter()
-            .find(|r| r.id == args.repo)
-            .ok_or_else(|| {
-                McpError::invalid_params(format!("unknown repo id '{}'", args.repo), None)
-            })?;
+        let repo = ws.repos.iter().find(|r| r.id == args.repo).ok_or_else(|| {
+            McpError::invalid_params(format!("unknown repo id '{}'", args.repo), None)
+        })?;
         let path = ws.repo_path(repo);
         if !path.exists() {
             return Err(McpError::invalid_params(
@@ -609,13 +608,9 @@ Use run for the same command across multiple repos (requires repos/tags/role). P
 {exec_note} Prefer argv arrays over shell. Avoid force-push/rm without user intent."
         );
 
-        ServerInfo::new(
-            ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
-        )
-        .with_server_info(Implementation::new("poly", env!("CARGO_PKG_VERSION")))
-        .with_instructions(instructions)
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new("poly", env!("CARGO_PKG_VERSION")))
+            .with_instructions(instructions)
     }
 }
 

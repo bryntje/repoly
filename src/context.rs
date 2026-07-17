@@ -54,6 +54,7 @@ pub struct FileChunk {
     pub content: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_context(
     workspace: &Workspace,
     query: Option<&str>,
@@ -512,10 +513,7 @@ pub fn format_prompt(pack: &ContextPack) -> String {
     if let Some(q) = &pack.query {
         out.push_str(&format!("# Query: {q}\n"));
     }
-    out.push_str(&format!(
-        "# Selected: {}\n",
-        pack.selected_repos.join(", ")
-    ));
+    out.push_str(&format!("# Selected: {}\n", pack.selected_repos.join(", ")));
     out.push_str(&format!("# Root: {}\n\n", pack.root));
 
     for section in &pack.sections {
@@ -589,10 +587,14 @@ pub fn format_prompt(pack: &ContextPack) -> String {
 
     out.push_str("## How to work\n");
     out.push_str("- Prefer changes only in selected repos unless the user asks otherwise.\n");
-    out.push_str("- Commit in the correct product repo; meta/docs are context, not product code.\n");
+    out.push_str(
+        "- Commit in the correct product repo; meta/docs are context, not product code.\n",
+    );
     out.push_str("- Do not dump unrelated repos into your working set.\n");
     if pack.truncated {
-        out.push_str("- Note: this pack was truncated; ask for a narrower query or higher --max-chars.\n");
+        out.push_str(
+            "- Note: this pack was truncated; ask for a narrower query or higher --max-chars.\n",
+        );
     }
     out.push('\n');
     out

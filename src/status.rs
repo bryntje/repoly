@@ -37,7 +37,11 @@ pub fn collect_status(
     let repos: Vec<_> = workspace
         .repos
         .iter()
-        .filter(|r| filter.map(|f| f.iter().any(|id| id == &r.id)).unwrap_or(true))
+        .filter(|r| {
+            filter
+                .map(|f| f.iter().any(|id| id == &r.id))
+                .unwrap_or(true)
+        })
         .collect();
 
     let statuses: Vec<RepoStatus> = repos
@@ -124,10 +128,12 @@ fn status_one(id: &str, path: &Path, fetch: bool) -> RepoStatus {
         let up = up.trim().to_string();
         if !up.is_empty() {
             st.upstream = Some(up);
-            if let Ok(counts) = git(path, &["rev-list", "--left-right", "--count", "HEAD...@{u}"])
-            {
+            if let Ok(counts) = git(
+                path,
+                &["rev-list", "--left-right", "--count", "HEAD...@{u}"],
+            ) {
                 // format: "ahead\tbehind"
-                let parts: Vec<_> = counts.trim().split_whitespace().collect();
+                let parts: Vec<_> = counts.split_whitespace().collect();
                 if parts.len() == 2 {
                     st.ahead = parts[0].parse().ok();
                     st.behind = parts[1].parse().ok();
@@ -164,28 +170,30 @@ fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
 }
 
 pub fn print_table(report: &StatusReport) {
-    println!(
-        "workspace: {}  root: {}",
-        report.workspace, report.root
-    );
+    println!("workspace: {}  root: {}", report.workspace, report.root);
     println!();
     println!(
-        "{:<18} {:<22} {:<8} {:>5} {:>6} {}",
-        "ID", "BRANCH", "DIRTY", "AHEAD", "BEHIND", "SUBJECT"
+        "{:<18} {:<22} {:<8} {:>5} {:>6} SUBJECT",
+        "ID", "BRANCH", "DIRTY", "AHEAD", "BEHIND"
     );
     println!("{}", "-".repeat(90));
     for r in &report.repos {
         if !r.exists {
             println!(
                 "{:<18} {:<22} {:<8} {:>5} {:>6} {}",
-                r.id, "-", "missing", "-", "-", r.error.as_deref().unwrap_or("")
+                r.id,
+                "-",
+                "missing",
+                "-",
+                "-",
+                r.error.as_deref().unwrap_or("")
             );
             continue;
         }
         if !r.is_git {
             println!(
-                "{:<18} {:<22} {:<8} {:>5} {:>6} {}",
-                r.id, "-", "n/a", "-", "-", "(not a git repo)"
+                "{:<18} {:<22} {:<8} {:>5} {:>6} (not a git repo)",
+                r.id, "-", "n/a", "-", "-"
             );
             continue;
         }
@@ -195,7 +203,10 @@ pub fn print_table(report: &StatusReport) {
             "clean".into()
         };
         let ahead = r.ahead.map(|n| n.to_string()).unwrap_or_else(|| "-".into());
-        let behind = r.behind.map(|n| n.to_string()).unwrap_or_else(|| "-".into());
+        let behind = r
+            .behind
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "-".into());
         let branch = r.branch.as_deref().unwrap_or("-");
         let subject = r.head_subject.as_deref().unwrap_or("");
         let err = r

@@ -71,7 +71,7 @@ pub fn commit_one(
     // Stage
     if opts.all {
         if opts.dry_run {
-            result.stdout.push_str(&format!("[dry-run] git add -A\n"));
+            result.stdout.push_str("[dry-run] git add -A\n");
         } else {
             let (code, so, se) = git(&path, &["add", "-A"])?;
             result.stdout.push_str(&so);
@@ -84,10 +84,9 @@ pub fn commit_one(
         }
     } else if !opts.paths.is_empty() {
         if opts.dry_run {
-            result.stdout.push_str(&format!(
-                "[dry-run] git add -- {}\n",
-                opts.paths.join(" ")
-            ));
+            result
+                .stdout
+                .push_str(&format!("[dry-run] git add -- {}\n", opts.paths.join(" ")));
         } else {
             let mut args = vec!["add".to_string(), "--".to_string()];
             args.extend(opts.paths.iter().cloned());
@@ -108,8 +107,8 @@ pub fn commit_one(
         let staged = has_staged_changes(&path)?;
         if !staged {
             result.skipped = true;
-            result.skip_reason = Some("nothing staged to commit (use --all or stage files first)"
-                .into());
+            result.skip_reason =
+                Some("nothing staged to commit (use --all or stage files first)".into());
             result.success = true;
             return Ok(result);
         }
@@ -237,13 +236,7 @@ pub fn print_results(results: &[CommitResult]) {
             let sha = r
                 .commit_sha
                 .as_deref()
-                .map(|s| {
-                    if s.len() > 8 {
-                        &s[..8]
-                    } else {
-                        s
-                    }
-                })
+                .map(|s| if s.len() > 8 { &s[..8] } else { s })
                 .unwrap_or("?");
             eprintln!("  [ok]   {}  {sha}", r.repo);
         } else {

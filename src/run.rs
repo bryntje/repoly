@@ -491,10 +491,7 @@ pub fn summarize(results: &[RepoRunResult]) {
             .as_ref()
             .map(|e| format!(" ({e})"))
             .unwrap_or_default();
-        eprintln!(
-            "  [{mark}] {}  exit={code}{err}  ({})",
-            r.repo_id, r.path
-        );
+        eprintln!("  [{mark}] {}  exit={code}{err}  ({})", r.repo_id, r.path);
     }
 }
 

@@ -20,9 +20,9 @@ pub fn expand_token(token: &str) -> Vec<String> {
             // Keep synonyms tight — avoid global words like "session" that pollute ranking
             &["oauth", "auth", "login", "signin"]
         }
-        "payment" | "payments" | "billing" | "checkout" | "mollie" | "premium" => {
-            &["payments", "payment", "checkout", "mollie", "premium", "billing"]
-        }
+        "payment" | "payments" | "billing" | "checkout" | "mollie" | "premium" => &[
+            "payments", "payment", "checkout", "mollie", "premium", "billing",
+        ],
         "discord" | "bot" | "guild" => &["discord", "bot", "guild", "alphapy"],
         "agent" | "agents" | "hermit" | "hermes" => {
             &["agents", "agent", "hermit", "memory", "vault"]
@@ -33,9 +33,7 @@ pub fn expand_token(token: &str) -> Vec<String> {
         "telemetry" | "metrics" | "ops" | "cockpit" => {
             &["telemetry", "metrics", "ops", "mind", "railway"]
         }
-        "ui" | "style" | "styling" | "theme" | "design" => {
-            &["ui", "styling", "theme", "frontend"]
-        }
+        "ui" | "style" | "styling" | "theme" | "design" => &["ui", "styling", "theme", "frontend"],
         "docs" | "documentation" | "readme" => &["docs", "documentation", "starlight"],
         "api" | "backend" | "core" => &["api", "backend", "core", "fastapi"],
         "frontend" | "web" | "app" | "dashboard" => {
@@ -123,7 +121,8 @@ pub fn rank_repos<'a>(workspace: &'a Workspace, query: &str) -> Vec<RankedRepo<'
                 if repo.tags.iter().any(|t| t.eq_ignore_ascii_case(v)) {
                     token_structured += if is_primary { 10 } else { 7 };
                     token_reasons.push(format!("tag={v}"));
-                } else if tags.split(|c: char| c.is_whitespace() || c == '-' || c == '_')
+                } else if tags
+                    .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
                     .any(|tag| tag == v.as_str())
                 {
                     token_structured += 4;

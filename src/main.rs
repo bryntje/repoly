@@ -1,23 +1,19 @@
-mod cli;
-mod commit;
-mod config;
-mod context;
-mod discover;
-mod mcp;
-mod plan;
-mod rank;
-mod run;
-mod status;
-
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use cli::{Cli, Commands, CtxFormat, ListFormat, PlanFormat, StatusFormat};
-use config::{find_config, load_config, ConfigError};
+use poly::cli::{Cli, Commands, CtxFormat, ListFormat, PlanFormat, StatusFormat};
+use poly::commit;
+use poly::config::{find_config, load_config, ConfigError};
+use poly::context;
+use poly::discover;
+use poly::mcp;
+use poly::plan;
+use poly::run;
+use poly::status;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    match run() {
+    match run_cli() {
         Ok(code) => code,
         Err(err) => {
             eprintln!("error: {err:#}");
@@ -33,7 +29,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<ExitCode> {
+fn run_cli() -> Result<ExitCode> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -95,8 +91,8 @@ fn run() -> Result<ExitCode> {
             match format {
                 ListFormat::Table => {
                     println!(
-                        "{:<20} {:<8} {:<6} {:<6} {}",
-                        "ID", "ROLE", "EXISTS", "GIT", "PATH"
+                        "{:<20} {:<8} {:<6} {:<6} PATH",
+                        "ID", "ROLE", "EXISTS", "GIT"
                     );
                     for repo in &workspace.repos {
                         let path = workspace.repo_path(repo);
@@ -269,7 +265,6 @@ fn run() -> Result<ExitCode> {
                 signoff,
             };
             let results = commit::commit_many(&workspace, &targets, &opts)?;
-            // Human-readable stdout for single-repo success details
             for r in &results {
                 if !r.stdout.is_empty() {
                     print!("{}", r.stdout);
@@ -335,7 +330,6 @@ fn run() -> Result<ExitCode> {
             exec_repos,
             allow_shell,
         } => {
-            // MCP owns stdio; never print normal CLI output on stdout.
             let rt = tokio::runtime::Runtime::new().context("tokio runtime")?;
             rt.block_on(mcp::serve(mcp::McpOptions {
                 config,
@@ -352,7 +346,7 @@ fn run() -> Result<ExitCode> {
     }
 }
 
-fn resolve_workspace(config_flag: Option<&PathBuf>) -> Result<(PathBuf, config::Workspace)> {
+fn resolve_workspace(config_flag: Option<&PathBuf>) -> Result<(PathBuf, poly::config::Workspace)> {
     let cfg_path = if let Some(p) = config_flag {
         p.clone()
     } else {

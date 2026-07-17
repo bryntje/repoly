@@ -60,20 +60,17 @@ pub fn build_plan(
         bail!("poly plan needs a query and/or --repos / --tags / --role");
     }
 
-    let primary = context::select_repos_scored(
-        workspace,
-        query,
-        repos_filter,
-        tags_filter,
-        role_filter,
-    );
+    let primary =
+        context::select_repos_scored(workspace, query, repos_filter, tags_filter, role_filter);
     if primary.is_empty() {
         bail!("no repos matched; try different query or filters");
     }
 
     let primary_ids: HashSet<String> = primary.iter().map(|s| s.repo.id.clone()).collect();
-    let mut score_map: HashMap<String, i32> =
-        primary.iter().map(|s| (s.repo.id.clone(), s.score)).collect();
+    let mut score_map: HashMap<String, i32> = primary
+        .iter()
+        .map(|s| (s.repo.id.clone(), s.score))
+        .collect();
     let mut reason_map: HashMap<String, Vec<String>> = primary
         .iter()
         .map(|s| (s.repo.id.clone(), s.reasons.clone()))
@@ -175,9 +172,7 @@ pub fn build_plan(
     let mut suggested = vec![
         format!(
             "poly ctx --repos {order_csv} --format prompt{}",
-            query
-                .map(|q| format!(" {q:?}"))
-                .unwrap_or_default()
+            query.map(|q| format!(" {q:?}")).unwrap_or_default()
         ),
         format!("poly status --repos {order_csv}"),
     ];
@@ -278,7 +273,10 @@ fn topo_sort<'a>(repos: &[&'a RepoEntry]) -> (Vec<&'a RepoEntry>, Option<String>
 
 pub fn format_markdown(plan: &WorkPlan) -> String {
     let mut out = String::new();
-    out.push_str(&format!("# Plan: {}\n\n", plan.query.as_deref().unwrap_or("(filters)")));
+    out.push_str(&format!(
+        "# Plan: {}\n\n",
+        plan.query.as_deref().unwrap_or("(filters)")
+    ));
     out.push_str(&format!("- **workspace:** {}\n", plan.workspace));
     out.push_str(&format!("- **root:** `{}`\n", plan.root));
     out.push_str(&format!(
@@ -329,7 +327,10 @@ pub fn format_markdown(plan: &WorkPlan) -> String {
     if !plan.external_deps.is_empty() {
         out.push_str("## External / missing dependencies\n\n");
         for e in &plan.external_deps {
-            out.push_str(&format!("- `{}` needs `{}` (not in plan)\n", e.from, e.needs));
+            out.push_str(&format!(
+                "- `{}` needs `{}` (not in plan)\n",
+                e.from, e.needs
+            ));
         }
         out.push('\n');
     }
@@ -350,8 +351,13 @@ pub fn format_prompt(plan: &WorkPlan) -> String {
         "# Poly plan: {}\n",
         plan.query.as_deref().unwrap_or("(filters)")
     ));
-    out.push_str(&format!("# Workspace: {} @ {}\n\n", plan.workspace, plan.root));
-    out.push_str("Work repos in this order (respect depends_on). Change only these repos unless asked.\n\n");
+    out.push_str(&format!(
+        "# Workspace: {} @ {}\n\n",
+        plan.workspace, plan.root
+    ));
+    out.push_str(
+        "Work repos in this order (respect depends_on). Change only these repos unless asked.\n\n",
+    );
     for s in &plan.steps {
         let role = s.role.as_deref().unwrap_or("-");
         let st = s.status_line.as_deref().unwrap_or("?");
@@ -361,10 +367,7 @@ pub fn format_prompt(plan: &WorkPlan) -> String {
             s.order, s.id, s.path
         ));
         if !s.depends_on_in_plan.is_empty() {
-            out.push_str(&format!(
-                "   after: {}\n",
-                s.depends_on_in_plan.join(", ")
-            ));
+            out.push_str(&format!("   after: {}\n", s.depends_on_in_plan.join(", ")));
         }
         if !s.reasons.is_empty() {
             out.push_str(&format!("   why: {}\n", s.reasons.join("; ")));
@@ -450,7 +453,10 @@ mod tests {
         let i_app = ids.iter().position(|x| *x == "app").unwrap();
         assert!(i_core < i_app);
         assert!(i_style < i_app);
-        assert!(plan.steps.iter().any(|s| s.id == "styling" && s.added_as_dependency));
+        assert!(plan
+            .steps
+            .iter()
+            .any(|s| s.id == "styling" && s.added_as_dependency));
     }
 
     #[test]
@@ -458,7 +464,10 @@ mod tests {
         let w = ws();
         let plan = build_plan(&w, Some("oauth"), None, None, None, false, true).unwrap();
         assert!(!plan.steps.iter().any(|s| s.id == "styling"));
-        assert!(plan.external_deps.iter().any(|e| e.from == "app" && e.needs == "styling"));
+        assert!(plan
+            .external_deps
+            .iter()
+            .any(|e| e.from == "app" && e.needs == "styling"));
     }
 
     #[test]

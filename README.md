@@ -19,6 +19,24 @@ cargo build --release
 
 Requires `git` on `PATH`.
 
+## Development & tests
+
+```bash
+cargo test              # unit + integration
+cargo test -- --nocapture
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+```
+
+| Layer | Location |
+|-------|----------|
+| Unit tests | `src/**` (`#[cfg(test)]`) |
+| CLI e2e | `tests/cli_integration.rs` (temp multi-repo + `assert_cmd`) |
+| Lib e2e | `tests/lib_integration.rs` |
+| Fixtures | `tests/common/mod.rs` |
+
+CI runs on GitHub Actions (`.github/workflows/ci.yml`): fmt, clippy, test on macOS + Ubuntu.
+
 ## Quickstart
 
 ```bash

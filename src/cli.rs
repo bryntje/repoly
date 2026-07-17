@@ -134,6 +134,21 @@ pub enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
         cmd: Vec<String>,
     },
+    /// Start an MCP stdio server (for Grok, Claude Code, Cursor, …)
+    ///
+    /// Exposes read-only tools: list_repos, status, build_context, repo_path, workspace_root.
+    /// Example Grok config:
+    ///
+    /// ```toml
+    /// [mcp_servers.poly]
+    /// command = "poly"
+    /// args = ["mcp"]
+    /// # optional: env = { POLY_CONFIG = "/path/to/poly.toml" }
+    /// ```
+    Mcp {
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+    },
     /// Print version
     Version,
 }

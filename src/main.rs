@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod context;
 mod discover;
+mod mcp;
 mod run;
 mod status;
 
@@ -244,6 +245,12 @@ fn run() -> Result<ExitCode> {
             )?;
             run::summarize(&results);
             Ok(ExitCode::from(run::exit_code_from_results(&results)))
+        }
+        Commands::Mcp { config } => {
+            // MCP owns stdio; never print normal CLI output on stdout.
+            let rt = tokio::runtime::Runtime::new().context("tokio runtime")?;
+            rt.block_on(mcp::serve(config))?;
+            Ok(ExitCode::SUCCESS)
         }
         Commands::Version => {
             println!("poly {}", env!("CARGO_PKG_VERSION"));

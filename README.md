@@ -60,7 +60,38 @@ grok -- "$(poly ctx --format prompt 'premium checkout')"
 | `poly path <repo>` | Print absolute path of a repo |
 | `poly exec <repo> -- <cmd…>` | Run a command in one repo cwd |
 | `poly run --repos a,b -- <cmd…>` | Run a command across repos |
+| `poly mcp` | MCP stdio server (agent-native tools) |
 | `poly version` | Version |
+
+### MCP server (Grok / Claude / Cursor)
+
+Read-only tools for coding agents — no shell required for status/context:
+
+| Tool | Purpose |
+|------|---------|
+| `list_repos` | Workspace repo map |
+| `status` | Cross-repo git status |
+| `build_context` | Context pack (`prompt` / `markdown` / `json`) |
+| `repo_path` | Absolute path of a repo id |
+| `workspace_root` | Workspace root |
+
+**Grok** (`~/.grok/config.toml`):
+
+```toml
+[mcp_servers.poly]
+command = "poly"
+args = ["mcp"]
+# If Grok does not start in your workspace root:
+# env = { POLY_CONFIG = "/Users/you/Dev/Projects/Github/poly.toml" }
+```
+
+Or:
+
+```bash
+grok mcp add poly -- poly mcp
+```
+
+`exec` / `run` stay CLI-only (safer default for MCP).
 
 ### Run commands in repos
 
@@ -157,9 +188,10 @@ See [`poly.toml.example`](./poly.toml.example) and [`examples/innersync/poly.tom
 
 ## Roadmap
 
-- Optional MCP server (`list_repos`, `repo_status`, `build_context`, `exec`)
-- Smarter query ranking for `poly ctx`
+- Optional MCP `exec` tool behind an explicit allowlist flag
+- Smarter query ranking for `poly ctx` / `build_context`
 - Optional shell mode (`sh -c`) behind an explicit flag
+- `poly plan` — suggest repo order from tags / depends_on
 
 ## License
 

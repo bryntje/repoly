@@ -38,7 +38,8 @@ First **public** release of `repoly` (internal dogfood history through 0.10.x is
 ### Notes
 
 - Windows support is **experimental** (CI does not hard-fail Windows yet).
-- Binary distribution via GitHub Releases and crates.io is part of the launch packaging pass.
+- Binary distribution: GitHub Releases on `v*` tags (macOS arm/x64, Linux x64, Windows x64).
+- crates.io: `cargo install repoly` after publish.
 
 [Unreleased]: https://github.com/bryntje/repoly/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/bryntje/repoly/releases/tag/v0.1.0

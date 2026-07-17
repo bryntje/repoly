@@ -79,8 +79,7 @@ git push origin v0.1.0
 | `repoly-aarch64-apple-darwin.tar.gz` | macOS Apple Silicon |
 | `repoly-x86_64-apple-darwin.tar.gz` | macOS Intel |
 | `repoly-x86_64-unknown-linux-gnu.tar.gz` | Linux x86_64 |
-| `repoly-aarch64-unknown-linux-gnu.tar.gz` | Linux ARM64 (cross) |
-| `repoly-x86_64-pc-windows-msvc.zip` | Windows x86_64 |
+| `repoly-x86_64-pc-windows-msvc.zip` | Windows x86_64 (experimental) |
 
 5. A GitHub Release is created/updated with archives + `.sha256` sidecars.
 6. Optional: re-run for an existing tag via **Actions → Release → Run workflow** and enter the tag.

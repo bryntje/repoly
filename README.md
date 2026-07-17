@@ -38,8 +38,7 @@ cargo build --release   # → target/release/repoly
 | `repoly-aarch64-apple-darwin.tar.gz` | macOS Apple Silicon |
 | `repoly-x86_64-apple-darwin.tar.gz` | macOS Intel |
 | `repoly-x86_64-unknown-linux-gnu.tar.gz` | Linux x86_64 |
-| `repoly-aarch64-unknown-linux-gnu.tar.gz` | Linux ARM64 |
-| `repoly-x86_64-pc-windows-msvc.zip` | Windows x86_64 |
+| `repoly-x86_64-pc-windows-msvc.zip` | Windows x86_64 (experimental) |
 
 Releases are produced automatically when a `v*` tag is pushed (see [CONTRIBUTING.md](./CONTRIBUTING.md#releasing-maintainers)).
 
@@ -252,9 +251,9 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). Security: [SECURITY.md](./SECURITY.md)
 
 ## Roadmap
 
-- Publish first `v0.1.0` tag + crates.io
 - `repoly doctor`
 - Configurable synonyms / exec policy in `repoly.toml`
+- Linux aarch64 release binary
 - Homebrew (later)
 
 ---

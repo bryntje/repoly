@@ -36,11 +36,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
             asset_name: repoly-x86_64-unknown-linux-gnu
             bin: repoly
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            asset_name: repoly-aarch64-unknown-linux-gnu
-            bin: repoly
-            cross: true
+          # Linux aarch64 via cross can flake on first runs; enable later if needed.
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-gnu
+          #   asset_name: repoly-aarch64-unknown-linux-gnu
+          #   bin: repoly
+          #   cross: true
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: repoly-aarch64-apple-darwin

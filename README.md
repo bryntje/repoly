@@ -280,6 +280,19 @@ repoly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
 - Configurable synonym dictionary in `repoly.toml`
 - Optional `repoly.toml` exec policy (default allowlist)
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Please run `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --all` before opening a PR.
+
+Security reports: [SECURITY.md](./SECURITY.md).
+
 ## License
 
-MIT OR Apache-2.0
+Licensed under either of:
+
+- [Apache License, Version 2.0](./LICENSE-APACHE)
+- [MIT license](./LICENSE-MIT)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in `repoly` shall be dual-licensed as above, without any additional terms or conditions.

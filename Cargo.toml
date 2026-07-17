@@ -6,8 +6,12 @@ description = "Multi-repo workspace awareness for the terminal — status and ag
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/bryntje/repoly"
+homepage = "https://github.com/bryntje/repoly"
+documentation = "https://github.com/bryntje/repoly#readme"
+authors = ["Bryan D'haen"]
 keywords = ["polyrepo", "multi-repo", "git", "cli", "workspace"]
 categories = ["command-line-utilities", "development-tools"]
+exclude = ["target/", ".git/"]
 
 [[bin]]
 name = "repoly"

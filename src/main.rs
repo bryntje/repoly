@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod context;
 mod discover;
+mod run;
 mod status;
 
 use anyhow::{bail, Context as _, Result};
@@ -190,6 +191,59 @@ fn run() -> Result<ExitCode> {
             let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
             println!("{}", workspace.root.display());
             Ok(ExitCode::SUCCESS)
+        }
+        Commands::Path { repo, config } => {
+            let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
+            let entry = run::resolve_repo(&workspace, &repo)?;
+            let path = workspace.repo_path(entry);
+            if !path.exists() {
+                bail!("repo '{repo}' path does not exist: {}", path.display());
+            }
+            println!("{}", path.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Commands::Exec {
+            repo,
+            dry_run,
+            config,
+            cmd,
+        } => {
+            let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
+            let entry = run::resolve_repo(&workspace, &repo)?;
+            let result = run::exec_one(&workspace, entry, &cmd, dry_run)?;
+            if let Some(err) = &result.error {
+                bail!("exec failed in '{}': {err}", result.repo_id);
+            }
+            let code = result.code().unwrap_or(1) as u8;
+            Ok(ExitCode::from(code))
+        }
+        Commands::Run {
+            repos,
+            tags,
+            role,
+            parallel,
+            continue_on_error,
+            dry_run,
+            config,
+            cmd,
+        } => {
+            let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
+            let selected = run::select_repos(
+                &workspace,
+                parse_csv(repos.as_deref()).as_deref(),
+                parse_csv(tags.as_deref()).as_deref(),
+                role.as_deref(),
+            )?;
+            let results = run::run_many(
+                &workspace,
+                &selected,
+                &cmd,
+                parallel,
+                continue_on_error,
+                dry_run,
+            )?;
+            run::summarize(&results);
+            Ok(ExitCode::from(run::exit_code_from_results(&results)))
         }
         Commands::Version => {
             println!("poly {}", env!("CARGO_PKG_VERSION"));

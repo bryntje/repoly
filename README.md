@@ -57,7 +57,39 @@ grok -- "$(poly ctx --format prompt 'premium checkout')"
 | `poly status` | Branch / dirty / ahead / behind (`--format json`, `--fetch`) |
 | `poly ctx [query]` | Context pack (`markdown` \| `prompt` \| `json`) |
 | `poly root` | Print workspace root |
+| `poly path <repo>` | Print absolute path of a repo |
+| `poly exec <repo> -- <cmd…>` | Run a command in one repo cwd |
+| `poly run --repos a,b -- <cmd…>` | Run a command across repos |
 | `poly version` | Version |
+
+### Run commands in repos
+
+```bash
+# One repo (stdio inherited — interactive CLIs work)
+poly exec app -- npm test
+poly exec core -- uv run pytest
+poly exec app -- grok "fix the OAuth callback"
+
+# Several repos, sequential
+poly run --repos core,app -- git status -sb
+poly run --tags backend -- git pull --ff-only
+
+# Parallel batch (captured output, labeled per repo)
+poly run --repos core,app,mind --parallel -- git rev-parse --abbrev-ref HEAD
+
+# Dry-run
+poly run --role frontend --dry-run -- npm run lint
+```
+
+Child processes receive:
+
+| Env | Value |
+|-----|--------|
+| `POLY_WORKSPACE` | workspace name |
+| `POLY_ROOT` | workspace root path |
+| `POLY_REPO` | repo id |
+| `POLY_REPO_PATH` | absolute repo path |
+| `POLY_REPO_ROLE` | role (if set) |
 
 ### Useful flags
 
@@ -123,12 +155,11 @@ See [`poly.toml.example`](./poly.toml.example) and [`examples/innersync/poly.tom
 | 2 | Partial success (e.g. some repos missing) |
 | 3 | Workspace not found (message text) |
 
-## Roadmap (not in v0.1)
+## Roadmap
 
-- `poly exec <repo> -- <cmd>`
-- `poly run --repos a,b -- <cli…>`
-- Optional MCP server
-- Smarter query ranking
+- Optional MCP server (`list_repos`, `repo_status`, `build_context`, `exec`)
+- Smarter query ranking for `poly ctx`
+- Optional shell mode (`sh -c`) behind an explicit flag
 
 ## License
 

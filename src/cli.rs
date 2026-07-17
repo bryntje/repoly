@@ -81,6 +81,59 @@ pub enum Commands {
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
     },
+    /// Print the absolute path of a repo (scripting)
+    Path {
+        /// Repo id
+        repo: String,
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+    },
+    /// Run a command in one repo's working directory
+    ///
+    /// Example: `poly exec app -- npm test`
+    Exec {
+        /// Repo id
+        repo: String,
+        /// Print the command without running it
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+        /// Command and args (use `--` before flags meant for the child)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
+        cmd: Vec<String>,
+    },
+    /// Run a command across one or more repos
+    ///
+    /// Example: `poly run --repos core,app -- git status -sb`
+    ///
+    /// Default is sequential with inherited stdio (interactive CLIs work).
+    /// `--parallel` captures output per repo (better for batch git/npm).
+    Run {
+        /// Comma-separated repo ids
+        #[arg(long)]
+        repos: Option<String>,
+        /// Include repos matching any of these tags (comma-separated)
+        #[arg(long)]
+        tags: Option<String>,
+        /// Include repos with this role
+        #[arg(long)]
+        role: Option<String>,
+        /// Run matching repos in parallel (captures stdout/stderr)
+        #[arg(long)]
+        parallel: bool,
+        /// Do not stop at the first failure (sequential mode)
+        #[arg(long)]
+        continue_on_error: bool,
+        /// Print commands without running them
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+        /// Command and args
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
+        cmd: Vec<String>,
+    },
     /// Print version
     Version,
 }

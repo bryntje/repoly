@@ -36,9 +36,9 @@ pub fn select_repos<'a>(
     tags: Option<&[String]>,
     role: Option<&str>,
 ) -> Result<Vec<&'a RepoEntry>> {
-    // Require an explicit filter so `poly run -- rm` cannot hit every root by accident.
+    // Require an explicit filter so `repoly run -- rm` cannot hit every root by accident.
     if repos.is_none() && tags.is_none() && role.is_none() {
-        bail!("poly run requires --repos, --tags, and/or --role (refusing to target all repos)");
+        bail!("repoly run requires --repos, --tags, and/or --role (refusing to target all repos)");
     }
 
     let mut set: Vec<&RepoEntry> = workspace.repos.iter().collect();
@@ -101,7 +101,7 @@ pub fn exec_one(
     mode: LaunchMode,
 ) -> Result<RepoRunResult> {
     if cmd.is_empty() {
-        bail!("no command specified (usage: poly exec <repo> -- <command...>)");
+        bail!("no command specified (usage: repoly exec <repo> -- <command...>)");
     }
 
     let path = workspace.repo_path(repo);
@@ -196,7 +196,7 @@ pub fn run_many(
     mode: LaunchMode,
 ) -> Result<Vec<RepoRunResult>> {
     if cmd.is_empty() {
-        bail!("no command specified (usage: poly run --repos a,b -- <command...>)");
+        bail!("no command specified (usage: repoly run --repos a,b -- <command...>)");
     }
 
     if parallel && repos.len() > 1 {
@@ -326,12 +326,12 @@ fn print_banner(id: &str, path: &Path, cmd: &[String], mode: LaunchMode) {
 }
 
 fn inject_env(cmd: &mut Command, workspace_name: &str, root: &Path, repo: &RepoEntry, path: &Path) {
-    cmd.env("POLY_WORKSPACE", workspace_name);
-    cmd.env("POLY_ROOT", root);
-    cmd.env("POLY_REPO", &repo.id);
-    cmd.env("POLY_REPO_PATH", path);
+    cmd.env("REPOLY_WORKSPACE", workspace_name);
+    cmd.env("REPOLY_ROOT", root);
+    cmd.env("REPOLY_REPO", &repo.id);
+    cmd.env("REPOLY_REPO_PATH", path);
     if let Some(role) = &repo.role {
-        cmd.env("POLY_REPO_ROLE", role);
+        cmd.env("REPOLY_REPO_ROLE", role);
     }
 }
 
@@ -518,7 +518,7 @@ mod tests {
         Workspace {
             name: "t".into(),
             root: PathBuf::from("/tmp/t"),
-            config_path: PathBuf::from("/tmp/t/poly.toml"),
+            config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
             repos: vec![
                 RepoEntry {

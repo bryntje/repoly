@@ -1,4 +1,4 @@
-//! `poly plan` — select repos for a task and order them by depends_on.
+//! `repoly plan` — select repos for a task and order them by depends_on.
 
 use crate::config::{RepoEntry, Workspace};
 use crate::context;
@@ -57,7 +57,7 @@ pub fn build_plan(
         && tags_filter.is_none()
         && role_filter.is_none()
     {
-        bail!("poly plan needs a query and/or --repos / --tags / --role");
+        bail!("repoly plan needs a query and/or --repos / --tags / --role");
     }
 
     let primary =
@@ -171,15 +171,15 @@ pub fn build_plan(
 
     let mut suggested = vec![
         format!(
-            "poly ctx --repos {order_csv} --format prompt{}",
+            "repoly ctx --repos {order_csv} --format prompt{}",
             query.map(|q| format!(" {q:?}")).unwrap_or_default()
         ),
-        format!("poly status --repos {order_csv}"),
+        format!("repoly status --repos {order_csv}"),
     ];
     for s in &steps {
         if !s.added_as_dependency || s.score > 0 {
             suggested.push(format!(
-                "poly exec {} -- grok \"work on this step only\"",
+                "repoly exec {} -- grok \"work on this step only\"",
                 s.id
             ));
         }
@@ -399,7 +399,7 @@ mod tests {
         Workspace {
             name: "t".into(),
             root: PathBuf::from("/tmp/t"),
-            config_path: PathBuf::from("/tmp/t/poly.toml"),
+            config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
             repos: vec![
                 RepoEntry {

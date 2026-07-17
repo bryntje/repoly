@@ -1,4 +1,4 @@
-# poly.toml — multi-repo workspace for the poly CLI
+# repoly.toml — multi-repo workspace for the repoly CLI
 schema_version = 1
 
 [workspace]

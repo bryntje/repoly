@@ -1,14 +1,14 @@
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use poly::cli::{Cli, Commands, CtxFormat, ListFormat, PlanFormat, StatusFormat};
-use poly::commit;
-use poly::config::{find_config, load_config, ConfigError};
-use poly::context;
-use poly::discover;
-use poly::mcp;
-use poly::plan;
-use poly::run;
-use poly::status;
+use repoly::cli::{Cli, Commands, CtxFormat, ListFormat, PlanFormat, StatusFormat};
+use repoly::commit;
+use repoly::config::{find_config, load_config, ConfigError};
+use repoly::context;
+use repoly::discover;
+use repoly::mcp;
+use repoly::plan;
+use repoly::run;
+use repoly::status;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -340,13 +340,15 @@ fn run_cli() -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Commands::Version => {
-            println!("poly {}", env!("CARGO_PKG_VERSION"));
+            println!("repoly {}", env!("CARGO_PKG_VERSION"));
             Ok(ExitCode::SUCCESS)
         }
     }
 }
 
-fn resolve_workspace(config_flag: Option<&PathBuf>) -> Result<(PathBuf, poly::config::Workspace)> {
+fn resolve_workspace(
+    config_flag: Option<&PathBuf>,
+) -> Result<(PathBuf, repoly::config::Workspace)> {
     let cfg_path = if let Some(p) = config_flag {
         p.clone()
     } else {
@@ -373,17 +375,17 @@ fn parse_csv(s: Option<&str>) -> Option<Vec<String>> {
 }
 
 fn cmd_init(from_code_workspace: Option<PathBuf>, force: bool) -> Result<()> {
-    let out = PathBuf::from("poly.toml");
+    let out = PathBuf::from("repoly.toml");
     if out.exists() && !force {
-        bail!("poly.toml already exists (use --force to overwrite)");
+        bail!("repoly.toml already exists (use --force to overwrite)");
     }
 
     let content = if let Some(ws_path) = from_code_workspace {
         let raw = std::fs::read_to_string(&ws_path)
             .with_context(|| format!("reading {}", ws_path.display()))?;
-        discover::poly_toml_from_code_workspace(&raw, &ws_path)?
+        discover::repoly_toml_from_code_workspace(&raw, &ws_path)?
     } else {
-        discover::default_poly_toml().to_string()
+        discover::default_repoly_toml().to_string()
     };
 
     std::fs::write(&out, content).with_context(|| format!("writing {}", out.display()))?;

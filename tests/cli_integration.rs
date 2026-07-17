@@ -7,30 +7,30 @@ use common::WorkspaceFixture;
 use predicates::prelude::*;
 use std::process::Command;
 
-fn poly() -> assert_cmd::Command {
-    cargo_bin_cmd!("poly")
+fn repoly_cmd() -> assert_cmd::Command {
+    cargo_bin_cmd!("repoly")
 }
 
 #[test]
 fn version_prints() {
-    poly()
+    repoly_cmd()
         .arg("version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("poly"));
+        .stdout(predicate::str::contains("repoly"));
 }
 
 #[test]
 fn list_and_validate_fixture() {
     let fx = WorkspaceFixture::basic();
-    poly()
+    repoly_cmd()
         .args(["validate", "--config"])
         .arg(fx.config())
         .assert()
         .success()
         .stdout(predicate::str::contains("2 repos"));
 
-    poly()
+    repoly_cmd()
         .args(["list", "--config"])
         .arg(fx.config())
         .assert()
@@ -42,7 +42,7 @@ fn list_and_validate_fixture() {
 #[test]
 fn list_json_shape() {
     let fx = WorkspaceFixture::basic();
-    let out = poly()
+    let out = repoly_cmd()
         .args(["list", "--format", "json", "--config"])
         .arg(fx.config())
         .assert()
@@ -58,7 +58,7 @@ fn list_json_shape() {
 #[test]
 fn status_json_clean_and_dirty() {
     let fx = WorkspaceFixture::basic();
-    let out = poly()
+    let out = repoly_cmd()
         .args(["status", "--format", "json", "--config"])
         .arg(fx.config())
         .assert()
@@ -72,7 +72,7 @@ fn status_json_clean_and_dirty() {
     assert!(repos.iter().all(|r| r["dirty"] == false));
 
     fx.dirty_web();
-    let out = poly()
+    let out = repoly_cmd()
         .args(["status", "--format", "json", "--repos", "web", "--config"])
         .arg(fx.config())
         .assert()
@@ -88,7 +88,7 @@ fn status_json_clean_and_dirty() {
 #[test]
 fn plan_orders_api_before_web() {
     let fx = WorkspaceFixture::basic();
-    let out = poly()
+    let out = repoly_cmd()
         .args([
             "plan",
             "oauth",
@@ -115,7 +115,7 @@ fn plan_orders_api_before_web() {
 #[test]
 fn ctx_includes_always_doc_and_selection() {
     let fx = WorkspaceFixture::basic();
-    poly()
+    repoly_cmd()
         .args([
             "ctx",
             "oauth",
@@ -134,7 +134,7 @@ fn ctx_includes_always_doc_and_selection() {
 #[test]
 fn path_and_root() {
     let fx = WorkspaceFixture::basic();
-    poly()
+    repoly_cmd()
         .args(["root", "--config"])
         .arg(fx.config())
         .assert()
@@ -143,7 +143,7 @@ fn path_and_root() {
             fx.path().file_name().unwrap().to_str().unwrap(),
         ));
 
-    let out = poly()
+    let out = repoly_cmd()
         .args(["path", "web", "--config"])
         .arg(fx.config())
         .assert()
@@ -158,7 +158,7 @@ fn path_and_root() {
 #[test]
 fn exec_runs_in_repo_cwd() {
     let fx = WorkspaceFixture::basic();
-    poly()
+    repoly_cmd()
         .args(["exec", "api", "--config"])
         .arg(fx.config())
         .args(["--", "git", "rev-parse", "--abbrev-ref", "HEAD"])
@@ -170,7 +170,7 @@ fn exec_runs_in_repo_cwd() {
 #[test]
 fn exec_shell_pipe() {
     let fx = WorkspaceFixture::basic();
-    poly()
+    repoly_cmd()
         .args(["exec", "api", "--shell", "--config"])
         .arg(fx.config())
         .args(["--", "printf 'hi' | tr h H"])
@@ -182,7 +182,7 @@ fn exec_shell_pipe() {
 #[test]
 fn run_multi_repo() {
     let fx = WorkspaceFixture::basic();
-    poly()
+    repoly_cmd()
         .args(["run", "--repos", "api,web", "--config"])
         .arg(fx.config())
         .args(["--", "git", "rev-parse", "--is-inside-work-tree"])
@@ -194,7 +194,7 @@ fn run_multi_repo() {
 #[test]
 fn run_refuses_all_repos() {
     let fx = WorkspaceFixture::basic();
-    poly()
+    repoly_cmd()
         .args(["run", "--config"])
         .arg(fx.config())
         .args(["--", "true"])
@@ -207,7 +207,7 @@ fn run_refuses_all_repos() {
 fn commit_dry_run_and_real() {
     let fx = WorkspaceFixture::basic();
     // nothing staged → skip
-    poly()
+    repoly_cmd()
         .args(["commit", "web", "-m", "should skip", "--config"])
         .arg(fx.config())
         .assert()
@@ -215,7 +215,7 @@ fn commit_dry_run_and_real() {
         .stderr(predicate::str::contains("[skip]"));
 
     fx.dirty_web();
-    poly()
+    repoly_cmd()
         .args([
             "commit",
             "web",
@@ -241,23 +241,23 @@ fn commit_dry_run_and_real() {
 #[test]
 fn missing_workspace_exit_code() {
     let tmp = tempfile::TempDir::new().unwrap();
-    poly()
+    repoly_cmd()
         .current_dir(tmp.path())
         .arg("list")
-        .env_remove("POLY_CONFIG")
+        .env_remove("REPOLY_CONFIG")
         .assert()
         .code(3)
         .stderr(predicate::str::contains("workspace not found"));
 }
 
 #[test]
-fn init_writes_poly_toml() {
+fn init_writes_repoly_toml() {
     let tmp = tempfile::TempDir::new().unwrap();
-    poly()
+    repoly_cmd()
         .current_dir(tmp.path())
         .arg("init")
         .assert()
         .success()
         .stdout(predicate::str::contains("wrote"));
-    assert!(tmp.path().join("poly.toml").is_file());
+    assert!(tmp.path().join("repoly.toml").is_file());
 }

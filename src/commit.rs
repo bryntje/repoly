@@ -1,4 +1,4 @@
-//! Safe git commit helper scoped to poly workspace repos.
+//! Safe git commit helper scoped to repoly workspace repos.
 
 use crate::config::{RepoEntry, Workspace};
 use crate::run;

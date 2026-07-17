@@ -1,16 +1,16 @@
 [package]
-name = "poly"
-version = "0.9.2"
+name = "repoly"
+version = "0.10.0"
 edition = "2021"
 description = "Multi-repo workspace awareness for the terminal — status and agent-ready context packs"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/bryntje/poly"
+repository = "https://github.com/bryntje/repoly"
 keywords = ["polyrepo", "multi-repo", "git", "cli", "workspace"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
-name = "poly"
+name = "repoly"
 path = "src/main.rs"
 
 [dependencies]

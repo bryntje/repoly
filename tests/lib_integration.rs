@@ -3,13 +3,13 @@
 mod common;
 
 use common::WorkspaceFixture;
-use poly::commit::{self, CommitOpts};
-use poly::config::load_config;
-use poly::context;
-use poly::plan;
-use poly::rank;
-use poly::run::{self, LaunchMode};
-use poly::status;
+use repoly::commit::{self, CommitOpts};
+use repoly::config::load_config;
+use repoly::context;
+use repoly::plan;
+use repoly::rank;
+use repoly::run::{self, LaunchMode};
+use repoly::status;
 
 #[test]
 fn load_fixture_config() {

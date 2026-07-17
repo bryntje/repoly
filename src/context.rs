@@ -230,7 +230,7 @@ fn estimate_repo_header(repo: &RepoEntry) -> usize {
     80 + repo.id.len() + repo.description.as_ref().map(|s| s.len()).unwrap_or(0)
 }
 
-/// Select repos by explicit filters and/or keyword query (same rules as `poly ctx` / `poly plan`).
+/// Select repos by explicit filters and/or keyword query (same rules as `repoly ctx` / `repoly plan`).
 pub fn select_repos<'a>(
     workspace: &'a Workspace,
     query: Option<&str>,
@@ -244,7 +244,7 @@ pub fn select_repos<'a>(
         .collect()
 }
 
-/// Scored selection used by `poly plan` (includes match score + reason hints).
+/// Scored selection used by `repoly plan` (includes match score + reason hints).
 #[derive(Debug, Clone)]
 pub struct ScoredRepo<'a> {
     pub repo: &'a RepoEntry,
@@ -416,7 +416,7 @@ fn read_budgeted(path: &Path, budget: usize, truncated: &mut bool) -> Option<Str
     }
     *truncated = true;
     let mut out: String = raw.chars().take(budget.saturating_sub(48)).collect();
-    out.push_str("\n\n… [truncated by poly; raise --max-chars]\n");
+    out.push_str("\n\n… [truncated by repoly; raise --max-chars]\n");
     Some(out)
 }
 
@@ -610,7 +610,7 @@ mod tests {
         Workspace {
             name: "acme".into(),
             root: PathBuf::from("/tmp/acme"),
-            config_path: PathBuf::from("/tmp/acme/poly.toml"),
+            config_path: PathBuf::from("/tmp/acme/repoly.toml"),
             context: ContextSection::default(),
             repos: vec![
                 RepoEntry {

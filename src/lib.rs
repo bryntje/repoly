@@ -1,6 +1,6 @@
-//! poly — multi-repo workspace awareness for the terminal.
+//! repoly — multi-repo workspace awareness for the terminal.
 //!
-//! Library surface used by the `poly` binary and integration tests.
+//! Library surface used by the `repoly` binary and integration tests.
 
 pub mod cli;
 pub mod commit;

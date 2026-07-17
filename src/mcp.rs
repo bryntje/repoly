@@ -1,4 +1,4 @@
-//! MCP (Model Context Protocol) stdio server for poly.
+//! MCP (Model Context Protocol) stdio server for repoly.
 //!
 //! Read-only tools by default. Optional `exec` when started with `--allow-exec`.
 
@@ -36,7 +36,7 @@ pub struct McpOptions {
 
 /// Run the MCP server on stdio until the client disconnects.
 pub async fn serve(opts: McpOptions) -> Result<()> {
-    let server = PolyMcp::new(opts)?;
+    let server = RepolyMcp::new(opts)?;
     let service = server
         .serve(stdio())
         .await
@@ -46,7 +46,7 @@ pub async fn serve(opts: McpOptions) -> Result<()> {
 }
 
 #[derive(Clone)]
-pub struct PolyMcp {
+pub struct RepolyMcp {
     // Used by #[tool_handler] / ToolRouter macros.
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
@@ -58,7 +58,7 @@ pub struct PolyMcp {
     allow_shell: bool,
 }
 
-impl PolyMcp {
+impl RepolyMcp {
     pub fn new(opts: McpOptions) -> Result<Self> {
         if let Some(ref p) = opts.config {
             let _ = load_config(p).with_context(|| format!("loading {}", p.display()))?;
@@ -91,8 +91,8 @@ impl PolyMcp {
             find_config().map_err(|e| {
                 McpError::invalid_params(
                     format!(
-                        "workspace not found ({e}); start poly mcp from a directory with poly.toml \
-                         or set POLY_CONFIG / pass --config"
+                        "workspace not found ({e}); start repoly mcp from a directory with repoly.toml \
+                         or set REPOLY_CONFIG / pass --config"
                     ),
                     None,
                 )
@@ -106,7 +106,7 @@ impl PolyMcp {
     fn assert_exec_enabled(&self) -> Result<(), McpError> {
         if !self.allow_exec {
             return Err(McpError::invalid_params(
-                "exec/run/commit are disabled; restart with `poly mcp --allow-exec` \
+                "exec/run/commit are disabled; restart with `repoly mcp --allow-exec` \
                  (optionally `--exec-repos a,b`, `--allow-shell`)",
                 None,
             ));
@@ -135,7 +135,7 @@ impl PolyMcp {
     fn resolve_shell_mode(&self, want_shell: bool) -> Result<run::LaunchMode, McpError> {
         if want_shell && !self.allow_shell {
             return Err(McpError::invalid_params(
-                "shell mode is disabled; restart with `poly mcp --allow-exec --allow-shell`",
+                "shell mode is disabled; restart with `repoly mcp --allow-exec --allow-shell`",
                 None,
             ));
         }
@@ -188,7 +188,7 @@ struct CtxArgs {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RepoIdArgs {
-    /// Repo id from poly.toml (e.g. "app", "core").
+    /// Repo id from repoly.toml (e.g. "app", "core").
     repo: String,
 }
 
@@ -282,10 +282,10 @@ struct CommitArgs {
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 #[tool_router]
-impl PolyMcp {
+impl RepolyMcp {
     #[tool(
         name = "list_repos",
-        description = "List all repositories in the poly multi-repo workspace (id, path, role, tags, exists, is_git)."
+        description = "List all repositories in the repoly multi-repo workspace (id, path, role, tags, exists, is_git)."
     )]
     async fn list_repos(&self, _args: Parameters<EmptyArgs>) -> Result<String, McpError> {
         let ws = self.load_ws()?;
@@ -317,7 +317,7 @@ impl PolyMcp {
 
     #[tool(
         name = "status",
-        description = "Git status across poly workspace repos: branch, dirty, ahead/behind, last subject."
+        description = "Git status across repoly workspace repos: branch, dirty, ahead/behind, last subject."
     )]
     async fn status(&self, Parameters(args): Parameters<StatusArgs>) -> Result<String, McpError> {
         let ws = self.load_ws()?;
@@ -357,7 +357,7 @@ impl PolyMcp {
 
     #[tool(
         name = "repo_path",
-        description = "Return the absolute filesystem path of a poly repo by id."
+        description = "Return the absolute filesystem path of a repoly repo by id."
     )]
     async fn repo_path(
         &self,
@@ -383,7 +383,7 @@ impl PolyMcp {
 
     #[tool(
         name = "workspace_root",
-        description = "Return the poly workspace root directory (directory containing poly.toml)."
+        description = "Return the repoly workspace root directory (directory containing repoly.toml)."
     )]
     async fn workspace_root(&self, _args: Parameters<EmptyArgs>) -> Result<String, McpError> {
         let ws = self.load_ws()?;
@@ -455,7 +455,7 @@ impl PolyMcp {
 
     #[tool(
         name = "run",
-        description = "Run the same command across multiple workspace repos (like poly run). Requires --allow-exec. Must pass repos and/or tags and/or role. Each target must be on --exec-repos allowlist if set. Always captures output. Prefer sequential (parallel=false)."
+        description = "Run the same command across multiple workspace repos (like repoly run). Requires --allow-exec. Must pass repos and/or tags and/or role. Each target must be on --exec-repos allowlist if set. Always captures output. Prefer sequential (parallel=false)."
     )]
     async fn run_cmd(&self, Parameters(args): Parameters<RunArgs>) -> Result<String, McpError> {
         self.assert_exec_enabled()?;
@@ -580,7 +580,7 @@ impl PolyMcp {
 }
 
 #[tool_handler]
-impl ServerHandler for PolyMcp {
+impl ServerHandler for RepolyMcp {
     fn get_info(&self) -> ServerInfo {
         let exec_note = if self.allow_exec {
             let repos = match &self.exec_repos {
@@ -598,18 +598,18 @@ impl ServerHandler for PolyMcp {
             };
             format!("exec/run/commit ENABLED ({repos}; {shell}).")
         } else {
-            "exec/run/commit DISABLED (start with `poly mcp --allow-exec`[, `--exec-repos a,b`][, `--allow-shell`])."
+            "exec/run/commit DISABLED (start with `repoly mcp --allow-exec`[, `--exec-repos a,b`][, `--allow-shell`])."
                 .into()
         };
 
         let instructions = format!(
-            "poly multi-repo workspace tools. Workflow: plan → build_context(format=prompt) → edit only selected repos. \
+            "repoly multi-repo workspace tools. Workflow: plan → build_context(format=prompt) → edit only selected repos. \
 Use run for the same command across multiple repos (requires repos/tags/role). Prefer commit for git commits. \
 {exec_note} Prefer argv arrays over shell. Avoid force-push/rm without user intent."
         );
 
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("poly", env!("CARGO_PKG_VERSION")))
+            .with_server_info(Implementation::new("repoly", env!("CARGO_PKG_VERSION")))
             .with_instructions(instructions)
     }
 }
@@ -628,6 +628,6 @@ fn parse_csv(s: Option<&str>) -> Option<Vec<String>> {
 #[allow(dead_code)]
 fn _assert_send_sync() {
     fn check<T: Send + Sync>() {}
-    check::<PolyMcp>();
+    check::<RepolyMcp>();
     let _ = Arc::new(());
 }

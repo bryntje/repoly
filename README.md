@@ -1,8 +1,8 @@
-# poly
+# repoly
 
 **Multi-repo workspace awareness for the terminal.**
 
-`poly` is a local, open-source CLI for polyrepo product stacks. It gives humans and AI coding CLIs (Grok, Claude Code, Codex, Aider, …) something IDEs already have: a machine-readable multi-root workspace with **cross-repo status** and **agent-ready context packs**.
+`repoly` is a local, open-source CLI for polyrepo product stacks. It gives humans and AI coding CLIs (Grok, Claude Code, Codex, Aider, …) something IDEs already have: a machine-readable multi-root workspace with **cross-repo status** and **agent-ready context packs**.
 
 No cloud. No IDE required. No forks of your coding agent.
 
@@ -14,7 +14,7 @@ cargo install --path .
 
 # or build a release binary
 cargo build --release
-# → target/release/poly
+# → target/release/repoly
 ```
 
 Requires `git` on `PATH`.
@@ -42,47 +42,47 @@ CI runs on GitHub Actions (`.github/workflows/ci.yml`): fmt, clippy, test on mac
 
 ```bash
 cd /path/to/your/polyrepo-checkout
-poly init                              # write poly.toml skeleton
+repoly init                              # write repoly.toml skeleton
 # or:
-poly init --from-code-workspace App.code-workspace
+repoly init --from-code-workspace App.code-workspace
 
-poly validate
-poly list
-poly status
-poly ctx "payments oauth"
-poly ctx --format prompt "discord link" | pbcopy
+repoly validate
+repoly list
+repoly status
+repoly ctx "payments oauth"
+repoly ctx --format prompt "discord link" | pbcopy
 ```
 
 Point any coding CLI at a single repo **after** reading the pack:
 
 ```bash
-poly ctx --format prompt "premium checkout" > /tmp/brief.md
+repoly ctx --format prompt "premium checkout" > /tmp/brief.md
 cd innersync-dashboard && grok "Read /tmp/brief.md then fix …"
 ```
 
 Or inject directly:
 
 ```bash
-grok -- "$(poly ctx --format prompt 'premium checkout')"
+grok -- "$(repoly ctx --format prompt 'premium checkout')"
 ```
 
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
-| `poly init` | Create `poly.toml` (optionally from `.code-workspace`) |
-| `poly validate` | Schema + path checks (`--strict`) |
-| `poly list` | List repos (`--format json`) |
-| `poly status` | Branch / dirty / ahead / behind (`--format json`, `--fetch`) |
-| `poly plan [query]` | Which repos + depends_on order (`markdown` \| `prompt` \| `json`) |
-| `poly ctx [query]` | Context pack (`markdown` \| `prompt` \| `json`) |
-| `poly root` | Print workspace root |
-| `poly path <repo>` | Print absolute path of a repo |
-| `poly exec <repo> -- <cmd…>` | Run a command in one repo cwd |
-| `poly commit <repo> -m "…"` | Safe git commit in workspace repo(s) |
-| `poly run --repos a,b -- <cmd…>` | Run a command across repos |
-| `poly mcp` | MCP stdio server (agent-native tools) |
-| `poly version` | Version |
+| `repoly init` | Create `repoly.toml` (optionally from `.code-workspace`) |
+| `repoly validate` | Schema + path checks (`--strict`) |
+| `repoly list` | List repos (`--format json`) |
+| `repoly status` | Branch / dirty / ahead / behind (`--format json`, `--fetch`) |
+| `repoly plan [query]` | Which repos + depends_on order (`markdown` \| `prompt` \| `json`) |
+| `repoly ctx [query]` | Context pack (`markdown` \| `prompt` \| `json`) |
+| `repoly root` | Print workspace root |
+| `repoly path <repo>` | Print absolute path of a repo |
+| `repoly exec <repo> -- <cmd…>` | Run a command in one repo cwd |
+| `repoly commit <repo> -m "…"` | Safe git commit in workspace repo(s) |
+| `repoly run --repos a,b -- <cmd…>` | Run a command across repos |
+| `repoly mcp` | MCP stdio server (agent-native tools) |
+| `repoly version` | Version |
 
 ### MCP server (Grok / Claude / Cursor)
 
@@ -103,19 +103,19 @@ Read-only tools for coding agents — no shell required for status/context:
 **Grok** (`~/.grok/config.toml`) — read-only (default):
 
 ```toml
-[mcp_servers.poly]
-command = "poly"
+[mcp_servers.repoly]
+command = "repoly"
 args = ["mcp"]
-env = { POLY_CONFIG = "/Users/you/Dev/Projects/Github/poly.toml" }
+env = { REPOLY_CONFIG = "/Users/you/Dev/Projects/Github/repoly.toml" }
 ```
 
 **With exec** (explicit; prefer a repo allowlist):
 
 ```toml
-[mcp_servers.poly]
-command = "poly"
+[mcp_servers.repoly]
+command = "repoly"
 args = ["mcp", "--allow-exec", "--exec-repos", "core,app"]
-env = { POLY_CONFIG = "/Users/you/Dev/Projects/Github/poly.toml" }
+env = { REPOLY_CONFIG = "/Users/you/Dev/Projects/Github/repoly.toml" }
 ```
 
 Shell for MCP (double opt-in — more powerful, easier to misuse):
@@ -126,11 +126,11 @@ args = ["mcp", "--allow-exec", "--allow-shell", "--exec-repos", "app"]
 
 ```bash
 # CLI equivalents
-poly mcp --allow-exec
-poly mcp --allow-exec --exec-repos core,app
-poly mcp --allow-exec --allow-shell --exec-repos app
+repoly mcp --allow-exec
+repoly mcp --allow-exec --exec-repos core,app
+repoly mcp --allow-exec --allow-shell --exec-repos app
 
-grok mcp add poly -- poly mcp --allow-exec --exec-repos core,app
+grok mcp add repoly -- repoly mcp --allow-exec --exec-repos core,app
 ```
 
 MCP `run` example (agent tool args):
@@ -155,50 +155,50 @@ Safety notes:
 
 ```bash
 # One repo (stdio inherited — interactive CLIs work)
-poly exec app -- npm test
-poly exec core -- uv run pytest
-poly exec app -- grok "fix the OAuth callback"
+repoly exec app -- npm test
+repoly exec core -- uv run pytest
+repoly exec app -- grok "fix the OAuth callback"
 
 # Shell mode (explicit; pipes / && / globs) — off by default
-poly exec app --shell -- 'npm test && echo ok'
-poly run --repos core,app --shell -- 'git status -sb | head -5'
+repoly exec app --shell -- 'npm test && echo ok'
+repoly run --repos core,app --shell -- 'git status -sb | head -5'
 
 # Several repos, sequential
-poly run --repos core,app -- git status -sb
-poly run --tags backend -- git pull --ff-only
+repoly run --repos core,app -- git status -sb
+repoly run --tags backend -- git pull --ff-only
 
 # Parallel batch (captured output, labeled per repo)
-poly run --repos core,app,mind --parallel -- git rev-parse --abbrev-ref HEAD
+repoly run --repos core,app,mind --parallel -- git rev-parse --abbrev-ref HEAD
 
 # Dry-run
-poly run --role frontend --dry-run -- npm run lint
+repoly run --role frontend --dry-run -- npm run lint
 ```
 
 Child processes receive:
 
 | Env | Value |
 |-----|--------|
-| `POLY_WORKSPACE` | workspace name |
-| `POLY_ROOT` | workspace root path |
-| `POLY_REPO` | repo id |
-| `POLY_REPO_PATH` | absolute repo path |
-| `POLY_REPO_ROLE` | role (if set) |
+| `REPOLY_WORKSPACE` | workspace name |
+| `REPOLY_ROOT` | workspace root path |
+| `REPOLY_REPO` | repo id |
+| `REPOLY_REPO_PATH` | absolute repo path |
+| `REPOLY_REPO_ROLE` | role (if set) |
 
 ### Useful flags
 
 ```bash
-poly status --repos core,app
-poly ctx --tags payments,oauth --format prompt
-poly ctx --role api --no-status
-poly ctx --repos core,app --max-chars 24000
-poly ctx "login checkout" --with-deps    # smarter ranking + depends_on
-poly plan "login"                        # synonyms: login → oauth/auth repos
-poly --help
+repoly status --repos core,app
+repoly ctx --tags payments,oauth --format prompt
+repoly ctx --role api --no-status
+repoly ctx --repos core,app --max-chars 24000
+repoly ctx "login checkout" --with-deps    # smarter ranking + depends_on
+repoly plan "login"                        # synonyms: login → oauth/auth repos
+repoly --help
 ```
 
 ### Query ranking (v0.7+)
 
-`poly ctx` / `poly plan` score repos using:
+`repoly ctx` / `repoly plan` score repos using:
 
 - id / role / tags / description
 - lightweight **synonyms** (e.g. `login` → oauth/auth, `billing` → payments)
@@ -209,10 +209,10 @@ poly --help
 Config discovery:
 
 1. `--config <path>`
-2. `$POLY_CONFIG`
-3. Walk up from CWD: `poly.toml` or `.poly/poly.toml`
+2. `$REPOLY_CONFIG`
+3. Walk up from CWD: `repoly.toml` or `.repoly/repoly.toml`
 
-## Config (`poly.toml`)
+## Config (`repoly.toml`)
 
 ```toml
 schema_version = 1
@@ -241,13 +241,13 @@ depends_on = ["api"]
 description = "Web app"
 ```
 
-See [`poly.toml.example`](./poly.toml.example) and [`examples/innersync/poly.toml`](./examples/innersync/poly.toml).
+See [`repoly.toml.example`](./repoly.toml.example) and [`examples/innersync/repoly.toml`](./examples/innersync/repoly.toml).
 
 ## Design principles
 
 - **Local-only** — no telemetry, no accounts
 - **Read-only MVP** — status + context never mutate product repos
-- **Adapter model** — agents stay single-cwd; `poly` decides *where* and *what context*
+- **Adapter model** — agents stay single-cwd; `repoly` decides *where* and *what context*
 - **Stable JSON** — for scripts and agents
 - **Secret-aware skips** — refuses to pack `.env*`, `*secret*`, `*credential*`, key files
 
@@ -263,22 +263,22 @@ See [`poly.toml.example`](./poly.toml.example) and [`examples/innersync/poly.tom
 ### Plan → context → execute → commit
 
 ```bash
-poly plan "identity oauth"
-poly ctx --repos core,styling,app,mind --format prompt "identity oauth"
-poly exec core -- grok "…"
+repoly plan "identity oauth"
+repoly ctx --repos core,styling,app,mind --format prompt "identity oauth"
+repoly exec core -- grok "…"
 
 # Commit only in the correct product repo
-poly commit core -m "fix: identity link dual-write"
-poly commit app -m "fix: oauth callback" --all
-poly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
+repoly commit core -m "fix: identity link dual-write"
+repoly commit app -m "fix: oauth callback" --all
+repoly commit --repos core,app -m "chore: sync related fixes" --all --dry-run
 ```
 
-`poly commit` never touches repos outside the workspace map. It will **skip** when nothing is staged (unless you pass `--all` or pathspecs). No force-push; amend/no-verify are explicit flags only.
+`repoly commit` never touches repos outside the workspace map. It will **skip** when nothing is staged (unless you pass `--all` or pathspecs). No force-push; amend/no-verify are explicit flags only.
 
 ## Roadmap
 
-- Configurable synonym dictionary in `poly.toml`
-- Optional `poly.toml` exec policy (default allowlist)
+- Configurable synonym dictionary in `repoly.toml`
+- Optional `repoly.toml` exec policy (default allowlist)
 
 ## License
 

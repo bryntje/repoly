@@ -11,7 +11,7 @@ pub const DEFAULT_CONTEXT_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "README.m
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("workspace not found (no poly.toml)")]
+    #[error("workspace not found (no repoly.toml)")]
     NotFound,
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
@@ -24,7 +24,7 @@ pub enum ConfigError {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PolyFile {
+pub struct RepolyFile {
     pub schema_version: u32,
     pub workspace: WorkspaceSection,
     #[serde(default)]
@@ -110,7 +110,7 @@ impl Workspace {
 }
 
 pub fn find_config() -> Result<PathBuf, ConfigError> {
-    if let Ok(p) = env::var("POLY_CONFIG") {
+    if let Ok(p) = env::var("REPOLY_CONFIG") {
         let path = PathBuf::from(p);
         if path.is_file() {
             return Ok(path);
@@ -120,13 +120,22 @@ pub fn find_config() -> Result<PathBuf, ConfigError> {
 
     let mut dir = env::current_dir()?;
     loop {
-        let candidate = dir.join("poly.toml");
+        let candidate = dir.join("repoly.toml");
         if candidate.is_file() {
             return Ok(candidate);
         }
-        let nested = dir.join(".poly").join("poly.toml");
+        let nested = dir.join(".repoly").join("repoly.toml");
         if nested.is_file() {
             return Ok(nested);
+        }
+        // Legacy paths from early "poly" naming (pre-public)
+        let legacy = dir.join("poly.toml");
+        if legacy.is_file() {
+            return Ok(legacy);
+        }
+        let legacy_nested = dir.join(".poly").join("poly.toml");
+        if legacy_nested.is_file() {
+            return Ok(legacy_nested);
         }
         if !dir.pop() {
             break;
@@ -137,7 +146,7 @@ pub fn find_config() -> Result<PathBuf, ConfigError> {
 
 pub fn load_config(path: &Path) -> Result<Workspace, ConfigError> {
     let raw = fs::read_to_string(path)?;
-    let file: PolyFile = toml::from_str(&raw).map_err(|e| ConfigError::Parse(e.to_string()))?;
+    let file: RepolyFile = toml::from_str(&raw).map_err(|e| ConfigError::Parse(e.to_string()))?;
 
     if file.schema_version != 1 {
         return Err(ConfigError::UnsupportedSchema(file.schema_version));
@@ -170,7 +179,7 @@ pub fn load_config(path: &Path) -> Result<Workspace, ConfigError> {
     })
 }
 
-fn validate_hard(file: &PolyFile) -> Result<(), ConfigError> {
+fn validate_hard(file: &RepolyFile) -> Result<(), ConfigError> {
     if file.workspace.name.trim().is_empty() {
         return Err(ConfigError::Validation(
             "workspace.name must not be empty".into(),
@@ -216,7 +225,7 @@ mod tests {
     #[test]
     fn parses_minimal() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("poly.toml");
+        let path = dir.path().join("repoly.toml");
         let mut f = fs::File::create(&path).unwrap();
         write!(
             f,
@@ -243,7 +252,7 @@ depends_on = ["api"]
     #[test]
     fn rejects_duplicate_ids() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("poly.toml");
+        let path = dir.path().join("repoly.toml");
         fs::write(
             &path,
             r#"

@@ -17,13 +17,13 @@ struct McpSession {
 
 impl McpSession {
     fn start(args: &[&str]) -> Self {
-        let mut child = Command::new(assert_cmd::cargo::cargo_bin("poly"))
+        let mut child = Command::new(assert_cmd::cargo::cargo_bin("repoly"))
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .expect("spawn poly mcp");
+            .expect("spawn repoly mcp");
 
         let stdin = child.stdin.take().expect("stdin");
         let stdout = child.stdout.take().expect("stdout");
@@ -66,7 +66,7 @@ impl McpSession {
             json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": { "name": "poly-test", "version": "0.0.1" }
+                "clientInfo": { "name": "repoly-test", "version": "0.0.1" }
             }),
         );
         self.notify_initialized();
@@ -152,7 +152,7 @@ fn mcp_initialize_and_list_tools_readonly() {
     let init = s.initialize();
     assert!(init.get("error").is_none(), "{init}");
     let result = &init["result"];
-    assert_eq!(result["serverInfo"]["name"], "poly");
+    assert_eq!(result["serverInfo"]["name"], "repoly");
     let instructions = result["instructions"].as_str().unwrap_or("");
     assert!(
         instructions.to_lowercase().contains("disabled"),

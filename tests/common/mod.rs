@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
-/// A temporary multi-repo workspace with `poly.toml` and two git repos.
+/// A temporary multi-repo workspace with `repoly.toml` and two git repos.
 pub struct WorkspaceFixture {
     pub root: TempDir,
 }
@@ -15,7 +15,7 @@ impl WorkspaceFixture {
     /// Layout:
     /// ```text
     /// root/
-    ///   poly.toml
+    ///   repoly.toml
     ///   docs/PLATFORM.md
     ///   api/   (git, main, clean)
     ///   web/   (git, main, one unstaged file optional)
@@ -55,7 +55,7 @@ impl WorkspaceFixture {
         git(&root_path.join("web"), &["commit", "-m", "agents"]);
 
         fs::write(
-            root_path.join("poly.toml"),
+            root_path.join("repoly.toml"),
             r#"
 schema_version = 1
 
@@ -92,7 +92,7 @@ description = "Web app"
     }
 
     pub fn config(&self) -> PathBuf {
-        self.path().join("poly.toml")
+        self.path().join("repoly.toml")
     }
 
     /// Create an unstaged change in `web`.
@@ -104,8 +104,8 @@ description = "Web app"
 fn init_git_repo(path: &Path, readme: &str) {
     fs::create_dir_all(path).unwrap();
     git(path, &["init", "-b", "main"]);
-    git(path, &["config", "user.email", "poly-test@example.com"]);
-    git(path, &["config", "user.name", "poly test"]);
+    git(path, &["config", "user.email", "repoly-test@example.com"]);
+    git(path, &["config", "user.name", "repoly test"]);
     // Avoid parent git hooks / signing issues in CI
     git(path, &["config", "commit.gpgsign", "false"]);
     fs::write(path.join("README.md"), readme).unwrap();

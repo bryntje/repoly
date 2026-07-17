@@ -3,9 +3,9 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "poly",
+    name = "repoly",
     about = "Multi-repo workspace awareness for the terminal",
-    long_about = "poly declares multi-repo workspaces, shows cross-repo git status, \
+    long_about = "repoly declares multi-repo workspaces, shows cross-repo git status, \
 and builds agent-ready context packs. Local-only, CLI-first, no IDE required."
 )]
 pub struct Cli {
@@ -15,16 +15,16 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Create a poly.toml in the current directory
+    /// Create a repoly.toml in the current directory
     Init {
         /// Import folders from a VS Code / Cursor .code-workspace file
         #[arg(long = "from-code-workspace", value_name = "FILE")]
         from_code_workspace: Option<PathBuf>,
-        /// Overwrite existing poly.toml
+        /// Overwrite existing repoly.toml
         #[arg(long)]
         force: bool,
     },
-    /// Validate poly.toml schema, ids, and paths
+    /// Validate repoly.toml schema, ids, and paths
     Validate {
         /// Treat warnings (missing depends_on targets, missing always-docs) as errors
         #[arg(long)]
@@ -54,7 +54,7 @@ pub enum Commands {
     },
     /// Suggest which repos to touch and in which order (depends_on)
     ///
-    /// Example: `poly plan "identity oauth"`
+    /// Example: `repoly plan "identity oauth"`
     Plan {
         /// Free-text query for keyword selection
         query: Option<String>,
@@ -120,9 +120,9 @@ pub enum Commands {
     /// Create a git commit in one or more workspace repos
     ///
     /// Examples:
-    ///   `poly commit app -m "fix oauth callback"`
-    ///   `poly commit app -m "wip" --all`
-    ///   `poly commit --repos core,app -m "chore: bump" --all`
+    ///   `repoly commit app -m "fix oauth callback"`
+    ///   `repoly commit app -m "wip" --all`
+    ///   `repoly commit --repos core,app -m "chore: bump" --all`
     Commit {
         /// Single repo id (alternative to --repos/--tags/--role)
         repo: Option<String>,
@@ -164,10 +164,10 @@ pub enum Commands {
     },
     /// Run a command in one repo's working directory
     ///
-    /// Example: `poly exec app -- npm test`
+    /// Example: `repoly exec app -- npm test`
     ///
     /// Shell pipes/redirects (explicit, less safe):
-    ///   `poly exec app --shell -- 'npm test && echo ok'`
+    ///   `repoly exec app --shell -- 'npm test && echo ok'`
     Exec {
         /// Repo id
         repo: String,
@@ -185,7 +185,7 @@ pub enum Commands {
     },
     /// Run a command across one or more repos
     ///
-    /// Example: `poly run --repos core,app -- git status -sb`
+    /// Example: `repoly run --repos core,app -- git status -sb`
     ///
     /// Default is sequential with inherited stdio (interactive CLIs work).
     /// `--parallel` captures output per repo (better for batch git/npm).
@@ -223,10 +223,10 @@ pub enum Commands {
     /// Shell form for exec requires an extra `--allow-shell`.
     ///
     /// ```toml
-    /// [mcp_servers.poly]
-    /// command = "poly"
+    /// [mcp_servers.repoly]
+    /// command = "repoly"
     /// args = ["mcp", "--allow-exec", "--exec-repos", "core,app"]
-    /// env = { POLY_CONFIG = "/path/to/poly.toml" }
+    /// env = { REPOLY_CONFIG = "/path/to/repoly.toml" }
     /// ```
     Mcp {
         #[arg(long, short = 'c')]

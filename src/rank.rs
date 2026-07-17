@@ -269,7 +269,7 @@ mod tests {
         Workspace {
             name: "t".into(),
             root: PathBuf::from("/tmp/t"),
-            config_path: PathBuf::from("/tmp/t/poly.toml"),
+            config_path: PathBuf::from("/tmp/t/repoly.toml"),
             context: ContextSection::default(),
             repos: vec![
                 RepoEntry {

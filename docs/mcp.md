@@ -2,6 +2,8 @@
 
 `repoly mcp` speaks [Model Context Protocol](https://modelcontextprotocol.io) over **stdio**.
 
+If you run `repoly mcp` yourself in a terminal, it will look “stuck” (cursor on the next line). That is normal: the process is **waiting for an MCP client** on stdin. Wire it into Grok / Claude / Cursor instead; use Ctrl-C to stop a manual run. A short explanation is printed to **stderr** when stdin is a TTY.
+
 ## Tools
 
 | Tool | Default | Purpose |

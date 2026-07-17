@@ -19,6 +19,7 @@ use rmcp::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::HashSet;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -36,6 +37,29 @@ pub struct McpOptions {
 
 /// Run the MCP server on stdio until the client disconnects.
 pub async fn serve(opts: McpOptions) -> Result<()> {
+    // MCP must keep stdout clean (JSON-RPC only). If a human ran this in a
+    // terminal, explain on stderr so the "frozen cursor" is less confusing.
+    if std::io::stdin().is_terminal() {
+        eprintln!("repoly mcp: listening for JSON-RPC on stdin (stdio transport).");
+        eprintln!("  This is normal — an MCP host (Grok, Claude Code, Cursor) connects here.");
+        eprintln!("  Interactive use: Ctrl-C to quit. Configure the host instead of running this by hand.");
+        if opts.allow_exec {
+            eprint!("  exec: enabled");
+            if let Some(ref repos) = opts.exec_repos {
+                eprintln!(" (repos: {})", repos.join(", "));
+            } else {
+                eprintln!(" (all workspace repos)");
+            }
+        } else {
+            eprintln!("  exec: disabled (pass --allow-exec to enable mutation tools)");
+        }
+        if opts.allow_shell {
+            eprintln!("  shell: enabled");
+        }
+        eprintln!("  docs: https://github.com/bryntje/repoly/blob/master/docs/mcp.md");
+        eprintln!();
+    }
+
     let server = RepolyMcp::new(opts)?;
     let service = server
         .serve(stdio())

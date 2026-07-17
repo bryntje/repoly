@@ -219,6 +219,10 @@ pub enum Commands {
     },
     /// Start an MCP stdio server (for Grok, Claude Code, Cursor, …)
     ///
+    /// Speaks JSON-RPC on stdin/stdout and **blocks until the client disconnects**.
+    /// Do not run this by hand for normal use — configure your MCP host to spawn it.
+    /// If stdin is a TTY, a short hint is printed on stderr.
+    ///
     /// Read-only tools by default. Enable command execution with `--allow-exec`.
     /// Shell form for exec requires an extra `--allow-shell`.
     ///

@@ -55,6 +55,7 @@ grok -- "$(poly ctx --format prompt 'premium checkout')"
 | `poly validate` | Schema + path checks (`--strict`) |
 | `poly list` | List repos (`--format json`) |
 | `poly status` | Branch / dirty / ahead / behind (`--format json`, `--fetch`) |
+| `poly plan [query]` | Which repos + depends_on order (`markdown` \| `prompt` \| `json`) |
 | `poly ctx [query]` | Context pack (`markdown` \| `prompt` \| `json`) |
 | `poly root` | Print workspace root |
 | `poly path <repo>` | Print absolute path of a repo |
@@ -71,6 +72,7 @@ Read-only tools for coding agents — no shell required for status/context:
 |------|---------|
 | `list_repos` | Workspace repo map |
 | `status` | Cross-repo git status |
+| `plan` | Repo selection + depends_on order |
 | `build_context` | Context pack (`prompt` / `markdown` / `json`) |
 | `repo_path` | Absolute path of a repo id |
 | `workspace_root` | Workspace root |
@@ -186,12 +188,19 @@ See [`poly.toml.example`](./poly.toml.example) and [`examples/innersync/poly.tom
 | 2 | Partial success (e.g. some repos missing) |
 | 3 | Workspace not found (message text) |
 
+### Plan → context → execute
+
+```bash
+poly plan "identity oauth"
+poly ctx --repos core,styling,app,mind --format prompt "identity oauth"
+poly exec core -- grok "…"
+```
+
 ## Roadmap
 
 - Optional MCP `exec` tool behind an explicit allowlist flag
 - Smarter query ranking for `poly ctx` / `build_context`
 - Optional shell mode (`sh -c`) behind an explicit flag
-- `poly plan` — suggest repo order from tags / depends_on
 
 ## License
 

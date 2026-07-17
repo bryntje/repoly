@@ -3,12 +3,13 @@ mod config;
 mod context;
 mod discover;
 mod mcp;
+mod plan;
 mod run;
 mod status;
 
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use cli::{Cli, Commands, CtxFormat, ListFormat, StatusFormat};
+use cli::{Cli, Commands, CtxFormat, ListFormat, PlanFormat, StatusFormat};
 use config::{find_config, load_config, ConfigError};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -160,6 +161,33 @@ fn run() -> Result<ExitCode> {
             } else {
                 Ok(ExitCode::SUCCESS)
             }
+        }
+        Commands::Plan {
+            query,
+            repos,
+            tags,
+            role,
+            no_deps,
+            format,
+            no_status,
+            config,
+        } => {
+            let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
+            let work = plan::build_plan(
+                &workspace,
+                query.as_deref(),
+                parse_csv(repos.as_deref()).as_deref(),
+                parse_csv(tags.as_deref()).as_deref(),
+                role.as_deref(),
+                !no_deps,
+                no_status,
+            )?;
+            match format {
+                PlanFormat::Markdown => print!("{}", plan::format_markdown(&work)),
+                PlanFormat::Prompt => print!("{}", plan::format_prompt(&work)),
+                PlanFormat::Json => println!("{}", serde_json::to_string_pretty(&work)?),
+            }
+            Ok(ExitCode::SUCCESS)
         }
         Commands::Ctx {
             query,

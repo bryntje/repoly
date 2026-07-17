@@ -5,6 +5,7 @@
 
 use crate::config::{find_config, load_config, Workspace};
 use crate::context;
+use crate::plan;
 use crate::status;
 use anyhow::{Context as _, Result};
 use rmcp::{
@@ -118,6 +119,31 @@ struct RepoIdArgs {
     repo: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct PlanArgs {
+    /// Free-text task query (e.g. "identity oauth").
+    #[serde(default)]
+    query: Option<String>,
+    /// Comma-separated repo ids.
+    #[serde(default)]
+    repos: Option<String>,
+    /// Comma-separated tags.
+    #[serde(default)]
+    tags: Option<String>,
+    /// Filter by role.
+    #[serde(default)]
+    role: Option<String>,
+    /// Skip expanding depends_on.
+    #[serde(default)]
+    no_deps: Option<bool>,
+    /// Output format: prompt (default), markdown, or json.
+    #[serde(default)]
+    format: Option<String>,
+    /// Skip live git status.
+    #[serde(default)]
+    no_status: Option<bool>,
+}
+
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 #[tool_router]
@@ -222,12 +248,37 @@ impl PolyMcp {
         let ws = self.load_ws()?;
         Ok(ws.root.display().to_string())
     }
+
+    #[tool(
+        name = "plan",
+        description = "Suggest which repos to touch for a task and the depends_on execution order. Call before multi-repo work; then build_context with the ordered repos."
+    )]
+    async fn plan_work(&self, Parameters(args): Parameters<PlanArgs>) -> Result<String, McpError> {
+        let ws = self.load_ws()?;
+        let work = plan::build_plan(
+            &ws,
+            args.query.as_deref(),
+            parse_csv(args.repos.as_deref()).as_deref(),
+            parse_csv(args.tags.as_deref()).as_deref(),
+            args.role.as_deref(),
+            !args.no_deps.unwrap_or(false),
+            args.no_status.unwrap_or(false),
+        )
+        .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+
+        let format = args.format.as_deref().unwrap_or("prompt");
+        match format {
+            "json" => Ok(serde_json::to_string_pretty(&work).unwrap_or_default()),
+            "markdown" | "md" => Ok(plan::format_markdown(&work)),
+            _ => Ok(plan::format_prompt(&work)),
+        }
+    }
 }
 
 #[tool_handler(
     name = "poly",
-    version = "0.3.0",
-    instructions = "poly exposes multi-repo workspace awareness. Before cross-repo work: call list_repos or status, then build_context with a task query. Prefer build_context(format=prompt). Scope edits to selected repos. Commit only in the correct product repo. Meta/docs are context, not product code. Use repo_path to get a cwd before shell commands. Mutation tools are not exposed over MCP — use the poly CLI for exec/run."
+    version = "0.4.0",
+    instructions = "poly exposes multi-repo workspace awareness. Workflow: plan (repo order) → build_context (format=prompt) → work only in selected repos. Scope edits correctly; commit only in the product repo. Meta/docs are context. Use repo_path before shell. Mutation stays on the poly CLI (exec/run), not MCP."
 )]
 impl ServerHandler for PolyMcp {}
 

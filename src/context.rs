@@ -223,13 +223,35 @@ fn estimate_repo_header(repo: &RepoEntry) -> usize {
     80 + repo.id.len() + repo.description.as_ref().map(|s| s.len()).unwrap_or(0)
 }
 
-fn select_repos<'a>(
+/// Select repos by explicit filters and/or keyword query (same rules as `poly ctx` / `poly plan`).
+pub fn select_repos<'a>(
     workspace: &'a Workspace,
     query: Option<&str>,
     repos_filter: Option<&[String]>,
     tags_filter: Option<&[String]>,
     role_filter: Option<&str>,
 ) -> Vec<&'a RepoEntry> {
+    select_repos_scored(workspace, query, repos_filter, tags_filter, role_filter)
+        .into_iter()
+        .map(|s| s.repo)
+        .collect()
+}
+
+/// Scored selection used by `poly plan` (includes match score + reason hints).
+#[derive(Debug, Clone)]
+pub struct ScoredRepo<'a> {
+    pub repo: &'a RepoEntry,
+    pub score: i32,
+    pub reasons: Vec<String>,
+}
+
+pub fn select_repos_scored<'a>(
+    workspace: &'a Workspace,
+    query: Option<&str>,
+    repos_filter: Option<&[String]>,
+    tags_filter: Option<&[String]>,
+    role_filter: Option<&str>,
+) -> Vec<ScoredRepo<'a>> {
     let mut set: Vec<&RepoEntry> = workspace.repos.iter().collect();
 
     if let Some(ids) = repos_filter {
@@ -242,63 +264,117 @@ fn select_repos<'a>(
         set.retain(|r| r.role.as_deref() == Some(role));
     }
 
-    // If explicit filters were given, we're done
+    // Explicit filters only → equal score, reason = filter
     if repos_filter.is_some() || tags_filter.is_some() || role_filter.is_some() {
-        return set;
+        return set
+            .into_iter()
+            .map(|repo| {
+                let mut reasons = Vec::new();
+                if let Some(ids) = repos_filter {
+                    if ids.iter().any(|id| id == &repo.id) {
+                        reasons.push("matched --repos".into());
+                    }
+                }
+                if let Some(tags) = tags_filter {
+                    let hit: Vec<_> = repo
+                        .tags
+                        .iter()
+                        .filter(|t| tags.iter().any(|ft| ft == *t))
+                        .cloned()
+                        .collect();
+                    if !hit.is_empty() {
+                        reasons.push(format!("tags: {}", hit.join(", ")));
+                    }
+                }
+                if let Some(role) = role_filter {
+                    if repo.role.as_deref() == Some(role) {
+                        reasons.push(format!("role: {role}"));
+                    }
+                }
+                if reasons.is_empty() {
+                    reasons.push("filter".into());
+                }
+                ScoredRepo {
+                    repo,
+                    score: 1,
+                    reasons,
+                }
+            })
+            .collect();
     }
 
     if let Some(q) = query {
         let q = q.trim().to_lowercase();
         if q.is_empty() {
-            return set;
+            return set
+                .into_iter()
+                .map(|repo| ScoredRepo {
+                    repo,
+                    score: 0,
+                    reasons: vec!["all repos (empty query)".into()],
+                })
+                .collect();
         }
         let tokens: Vec<&str> = q.split_whitespace().collect();
-        let mut scored: Vec<(i32, &RepoEntry)> = workspace
+        let mut scored: Vec<ScoredRepo<'_>> = workspace
             .repos
             .iter()
             .filter_map(|r| {
                 let mut score = 0i32;
+                let mut reasons = Vec::new();
                 let id = r.id.to_lowercase();
                 let role = r.role.as_deref().unwrap_or("").to_lowercase();
                 let desc = r.description.as_deref().unwrap_or("").to_lowercase();
                 let tags = r.tags.join(" ").to_lowercase();
-                let hay = format!("{id} {role} {desc} {tags}");
                 for t in &tokens {
                     if id == *t {
                         score += 10;
+                        reasons.push(format!("id={id}"));
                     } else if id.contains(t) {
                         score += 5;
+                        reasons.push(format!("id~{t}"));
                     }
                     if role.contains(t) {
                         score += 3;
+                        reasons.push(format!("role~{t}"));
                     }
-                    if tags.contains(t) {
+                    if tags.split_whitespace().any(|tag| tag == *t || tag.contains(t)) {
                         score += 4;
+                        reasons.push(format!("tag~{t}"));
                     }
                     if desc.contains(t) {
                         score += 2;
-                    }
-                    if hay.contains(t) {
-                        score += 1;
+                        reasons.push(format!("desc~{t}"));
                     }
                 }
+                reasons.sort();
+                reasons.dedup();
                 if score > 0 {
-                    Some((score, r))
+                    Some(ScoredRepo {
+                        repo: r,
+                        score,
+                        reasons,
+                    })
                 } else {
                     None
                 }
             })
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
-        if scored.is_empty() {
-            // Fall back to all metadata mode handled by caller when query matches nothing?
-            // For usability: return empty selection so pack still has always-docs
-            return Vec::new();
-        }
-        return scored.into_iter().map(|(_, r)| r).collect();
+        scored.sort_by(|a, b| {
+            b.score
+                .cmp(&a.score)
+                .then_with(|| a.repo.id.cmp(&b.repo.id))
+        });
+        return scored;
     }
 
-    set
+    set.into_iter()
+        .map(|repo| ScoredRepo {
+            repo,
+            score: 0,
+            reasons: vec!["all repos".into()],
+        })
+        .collect()
 }
 
 fn is_secret_path(path: &Path) -> bool {

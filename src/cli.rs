@@ -52,6 +52,32 @@ pub enum Commands {
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
     },
+    /// Suggest which repos to touch and in which order (depends_on)
+    ///
+    /// Example: `poly plan "identity oauth"`
+    Plan {
+        /// Free-text query for keyword selection
+        query: Option<String>,
+        /// Force-include repo ids (comma-separated)
+        #[arg(long)]
+        repos: Option<String>,
+        /// Include repos matching any of these tags (comma-separated)
+        #[arg(long)]
+        tags: Option<String>,
+        /// Include repos with this role
+        #[arg(long)]
+        role: Option<String>,
+        /// Do not expand transitive depends_on into the plan
+        #[arg(long)]
+        no_deps: bool,
+        #[arg(long, value_enum, default_value_t = PlanFormat::Markdown)]
+        format: PlanFormat,
+        /// Skip live git status lines
+        #[arg(long)]
+        no_status: bool,
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+    },
     /// Build a cross-repo context pack for humans or agents
     Ctx {
         /// Free-text query for keyword selection (optional)
@@ -136,7 +162,7 @@ pub enum Commands {
     },
     /// Start an MCP stdio server (for Grok, Claude Code, Cursor, …)
     ///
-    /// Exposes read-only tools: list_repos, status, build_context, repo_path, workspace_root.
+    /// Exposes read-only tools: list_repos, status, plan, build_context, repo_path, workspace_root.
     /// Example Grok config:
     ///
     /// ```toml
@@ -169,6 +195,14 @@ pub enum StatusFormat {
 
 #[derive(Clone, Copy, Debug, ValueEnum, Default)]
 pub enum CtxFormat {
+    #[default]
+    Markdown,
+    Prompt,
+    Json,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum, Default)]
+pub enum PlanFormat {
     #[default]
     Markdown,
     Prompt,

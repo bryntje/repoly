@@ -2,9 +2,14 @@
 
 **Multi-repo workspace awareness for the terminal.**
 
+[![CI](https://github.com/bryntje/repoly/actions/workflows/ci.yml/badge.svg)](https://github.com/bryntje/repoly/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](./LICENSE-MIT)
+
 `repoly` is a local, open-source CLI for polyrepo product stacks. It gives humans and AI coding CLIs (Grok, Claude Code, Codex, Aider, …) something IDEs already have: a machine-readable multi-root workspace with **cross-repo status** and **agent-ready context packs**.
 
 No cloud. No IDE required. No forks of your coding agent.
+
+**Public version:** `0.1.0` (first public release). See [CHANGELOG.md](./CHANGELOG.md).
 
 ## Install
 

@@ -45,7 +45,7 @@ Please run **fmt**, **clippy**, and **tests** before opening a PR.
 
 - Keep PRs focused (one concern per PR when practical)
 - Prefer small, reviewable commits with complete sentences in messages
-- Update `CHANGELOG.md` under `[Unreleased]` when user-visible behavior changes (once that file exists)
+- Update [CHANGELOG.md](./CHANGELOG.md) under `[Unreleased]` when user-visible behavior changes
 - Do not commit secrets, personal `repoly.toml` from private monorepos, or `.env` files
 
 ## Code style

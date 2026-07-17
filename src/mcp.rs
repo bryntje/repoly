@@ -1,28 +1,43 @@
 //! MCP (Model Context Protocol) stdio server for poly.
 //!
-//! Read-only tools so agents can discover multi-repo context without shell hacks.
-//! Mutation (`exec` / `run`) stays on the CLI surface on purpose.
+//! Read-only tools by default. Optional `exec` when started with `--allow-exec`.
 
 use crate::config::{find_config, load_config, Workspace};
 use crate::context;
 use crate::plan;
+use crate::run;
 use crate::status;
 use anyhow::{Context as _, Result};
 use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{Implementation, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
     transport::stdio,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+/// Options for the MCP server (CLI / env).
+#[derive(Debug, Clone, Default)]
+pub struct McpOptions {
+    pub config: Option<PathBuf>,
+    /// Enable the `exec` tool (runs commands in a repo cwd).
+    pub allow_exec: bool,
+    /// If set, `exec` may only target these repo ids.
+    pub exec_repos: Option<Vec<String>>,
+}
+
 /// Run the MCP server on stdio until the client disconnects.
-pub async fn serve(config: Option<PathBuf>) -> Result<()> {
-    let server = PolyMcp::new(config)?;
-    let service = server.serve(stdio()).await.context("starting MCP stdio transport")?;
+pub async fn serve(opts: McpOptions) -> Result<()> {
+    let server = PolyMcp::new(opts)?;
+    let service = server
+        .serve(stdio())
+        .await
+        .context("starting MCP stdio transport")?;
     service.waiting().await.context("MCP server session")?;
     Ok(())
 }
@@ -34,22 +49,30 @@ pub struct PolyMcp {
     tool_router: ToolRouter<Self>,
     /// Resolved config path (if known at startup).
     config_path: Option<PathBuf>,
+    allow_exec: bool,
+    /// Allowlist of repo ids for exec; None = all workspace repos when allow_exec.
+    exec_repos: Option<HashSet<String>>,
 }
 
 impl PolyMcp {
-    pub fn new(config: Option<PathBuf>) -> Result<Self> {
-        // Eagerly validate config if discoverable so startup fails fast with a clear error.
-        if let Some(ref p) = config {
+    pub fn new(opts: McpOptions) -> Result<Self> {
+        if let Some(ref p) = opts.config {
             let _ = load_config(p).with_context(|| format!("loading {}", p.display()))?;
         } else if let Ok(p) = find_config() {
             let _ = load_config(&p).with_context(|| format!("loading {}", p.display()))?;
         }
-        // If no config yet, tools will error with a clear message when called
-        // (agent may start MCP from a different cwd than the workspace).
+
+        if opts.exec_repos.is_some() && !opts.allow_exec {
+            anyhow::bail!("--exec-repos requires --allow-exec");
+        }
+
+        let exec_repos = opts.exec_repos.map(|v| v.into_iter().collect());
 
         Ok(Self {
             tool_router: Self::tool_router(),
-            config_path: config.or_else(|| find_config().ok()),
+            config_path: opts.config.or_else(|| find_config().ok()),
+            allow_exec: opts.allow_exec,
+            exec_repos,
         })
     }
 
@@ -70,6 +93,29 @@ impl PolyMcp {
         load_config(&path).map_err(|e| {
             McpError::invalid_params(format!("failed to load {}: {e}", path.display()), None)
         })
+    }
+
+    fn assert_exec_allowed(&self, repo_id: &str) -> Result<(), McpError> {
+        if !self.allow_exec {
+            return Err(McpError::invalid_params(
+                "exec is disabled; restart the server with `poly mcp --allow-exec` \
+                 (optionally `--exec-repos a,b` to restrict targets)",
+                None,
+            ));
+        }
+        if let Some(ref allow) = self.exec_repos {
+            if !allow.contains(repo_id) {
+                let list: Vec<_> = allow.iter().cloned().collect();
+                return Err(McpError::invalid_params(
+                    format!(
+                        "repo '{repo_id}' is not in the exec allowlist (allowed: {})",
+                        list.join(", ")
+                    ),
+                    None,
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -142,6 +188,15 @@ struct PlanArgs {
     /// Skip live git status.
     #[serde(default)]
     no_status: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ExecArgs {
+    /// Repo id to run in (must be allowed when --exec-repos is set).
+    repo: String,
+    /// Command argv as separate strings, e.g. ["git", "status", "-sb"].
+    /// First element is the program; remaining are args. No shell expansion.
+    command: Vec<String>,
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────
@@ -229,11 +284,17 @@ impl PolyMcp {
             .repos
             .iter()
             .find(|r| r.id == args.repo)
-            .ok_or_else(|| McpError::invalid_params(format!("unknown repo id '{}'", args.repo), None))?;
+            .ok_or_else(|| {
+                McpError::invalid_params(format!("unknown repo id '{}'", args.repo), None)
+            })?;
         let path = ws.repo_path(repo);
         if !path.exists() {
             return Err(McpError::invalid_params(
-                format!("repo '{}' path does not exist: {}", args.repo, path.display()),
+                format!(
+                    "repo '{}' path does not exist: {}",
+                    args.repo,
+                    path.display()
+                ),
                 None,
             ));
         }
@@ -273,14 +334,80 @@ impl PolyMcp {
             _ => Ok(plan::format_prompt(&work)),
         }
     }
+
+    #[tool(
+        name = "exec",
+        description = "Run a command in one repo's working directory (no shell). Requires the server to be started with --allow-exec. Optional --exec-repos restricts targets. Prefer argv form: command=[\"git\",\"status\",\"-sb\"]."
+    )]
+    async fn exec_cmd(&self, Parameters(args): Parameters<ExecArgs>) -> Result<String, McpError> {
+        self.assert_exec_allowed(&args.repo)?;
+        if args.command.is_empty() {
+            return Err(McpError::invalid_params(
+                "command must be a non-empty argv array (e.g. [\"git\", \"status\"])",
+                None,
+            ));
+        }
+
+        let ws = self.load_ws()?;
+        let entry = run::resolve_repo(&ws, &args.repo)
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+
+        // Capture mode: MCP owns stdio; never inherit.
+        let result = run::exec_capture(&ws, entry, &args.command)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        let out = serde_json::json!({
+            "repo": result.repo_id,
+            "path": result.path,
+            "command": args.command,
+            "exit_code": result.code(),
+            "success": result.success(),
+            "error": result.error,
+            "stdout": result.stdout.unwrap_or_default(),
+            "stderr": result.stderr.unwrap_or_default(),
+        });
+        Ok(serde_json::to_string_pretty(&out).unwrap_or_default())
+    }
 }
 
-#[tool_handler(
-    name = "poly",
-    version = "0.4.0",
-    instructions = "poly exposes multi-repo workspace awareness. Workflow: plan (repo order) → build_context (format=prompt) → work only in selected repos. Scope edits correctly; commit only in the product repo. Meta/docs are context. Use repo_path before shell. Mutation stays on the poly CLI (exec/run), not MCP."
-)]
-impl ServerHandler for PolyMcp {}
+#[tool_handler]
+impl ServerHandler for PolyMcp {
+    fn get_info(&self) -> ServerInfo {
+        let exec_note = if self.allow_exec {
+            match &self.exec_repos {
+                Some(set) => {
+                    let mut ids: Vec<_> = set.iter().cloned().collect();
+                    ids.sort();
+                    format!(
+                        "exec is ENABLED for allowlisted repos only: {}.",
+                        ids.join(", ")
+                    )
+                }
+                None => {
+                    "exec is ENABLED for all workspace repos (prefer plan first; no shell expansion)."
+                        .into()
+                }
+            }
+        } else {
+            "exec is DISABLED (start with `poly mcp --allow-exec` and optionally `--exec-repos a,b`)."
+                .into()
+        };
+
+        let instructions = format!(
+            "poly multi-repo workspace tools. Workflow: plan → build_context(format=prompt) → edit only selected repos. \
+Commit in the correct product repo; meta/docs are context. Use repo_path for cwd. \
+{exec_note} Commands use argv arrays (no shell). Prefer git/npm/pytest-style tools; avoid destructive force-push/rm without user intent."
+        );
+
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .build(),
+        )
+        .with_server_info(Implementation::new("poly", env!("CARGO_PKG_VERSION")))
+        .with_instructions(instructions)
+    }
+}
 
 fn parse_csv(s: Option<&str>) -> Option<Vec<String>> {
     s.map(|v| {
@@ -293,7 +420,6 @@ fn parse_csv(s: Option<&str>) -> Option<Vec<String>> {
     .filter(|v: &Vec<String>| !v.is_empty())
 }
 
-// Silence unused Arc if macros need Sync — PolyMcp is Clone.
 #[allow(dead_code)]
 fn _assert_send_sync() {
     fn check<T: Send + Sync>() {}

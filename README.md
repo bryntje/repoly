@@ -76,24 +76,40 @@ Read-only tools for coding agents — no shell required for status/context:
 | `build_context` | Context pack (`prompt` / `markdown` / `json`) |
 | `repo_path` | Absolute path of a repo id |
 | `workspace_root` | Workspace root |
+| `exec` | Run argv in a repo cwd (**opt-in**, see below) |
 
-**Grok** (`~/.grok/config.toml`):
+**Grok** (`~/.grok/config.toml`) — read-only (default):
 
 ```toml
 [mcp_servers.poly]
 command = "poly"
 args = ["mcp"]
-# If Grok does not start in your workspace root:
-# env = { POLY_CONFIG = "/Users/you/Dev/Projects/Github/poly.toml" }
+env = { POLY_CONFIG = "/Users/you/Dev/Projects/Github/poly.toml" }
 ```
 
-Or:
+**With exec** (explicit; prefer a repo allowlist):
+
+```toml
+[mcp_servers.poly]
+command = "poly"
+args = ["mcp", "--allow-exec", "--exec-repos", "core,app"]
+env = { POLY_CONFIG = "/Users/you/Dev/Projects/Github/poly.toml" }
+```
 
 ```bash
-grok mcp add poly -- poly mcp
+# CLI equivalents
+poly mcp --allow-exec
+poly mcp --allow-exec --exec-repos core,app
+
+grok mcp add poly -- poly mcp --allow-exec --exec-repos core,app
 ```
 
-`exec` / `run` stay CLI-only (safer default for MCP).
+Safety notes:
+
+- `exec` is **off** unless `--allow-exec`
+- `--exec-repos a,b` further restricts targets
+- No shell: `command` is an argv array (`["git","status"]`), not `"git status"`
+- `poly run` multi-repo remains CLI-only
 
 ### Run commands in repos
 
@@ -198,9 +214,9 @@ poly exec core -- grok "…"
 
 ## Roadmap
 
-- Optional MCP `exec` tool behind an explicit allowlist flag
 - Smarter query ranking for `poly ctx` / `build_context`
 - Optional shell mode (`sh -c`) behind an explicit flag
+- Optional MCP multi-repo `run` (still CLI-only)
 
 ## License
 

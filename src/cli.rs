@@ -162,18 +162,23 @@ pub enum Commands {
     },
     /// Start an MCP stdio server (for Grok, Claude Code, Cursor, …)
     ///
-    /// Exposes read-only tools: list_repos, status, plan, build_context, repo_path, workspace_root.
-    /// Example Grok config:
+    /// Read-only tools by default. Enable command execution with `--allow-exec`.
     ///
     /// ```toml
     /// [mcp_servers.poly]
     /// command = "poly"
-    /// args = ["mcp"]
-    /// # optional: env = { POLY_CONFIG = "/path/to/poly.toml" }
+    /// args = ["mcp", "--allow-exec", "--exec-repos", "core,app"]
+    /// env = { POLY_CONFIG = "/path/to/poly.toml" }
     /// ```
     Mcp {
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
+        /// Expose the `exec` tool (runs argv in a repo cwd; no shell)
+        #[arg(long)]
+        allow_exec: bool,
+        /// Comma-separated repo ids that `exec` may target (requires --allow-exec)
+        #[arg(long, value_name = "IDS")]
+        exec_repos: Option<String>,
     },
     /// Print version
     Version,

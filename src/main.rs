@@ -274,10 +274,18 @@ fn run() -> Result<ExitCode> {
             run::summarize(&results);
             Ok(ExitCode::from(run::exit_code_from_results(&results)))
         }
-        Commands::Mcp { config } => {
+        Commands::Mcp {
+            config,
+            allow_exec,
+            exec_repos,
+        } => {
             // MCP owns stdio; never print normal CLI output on stdout.
             let rt = tokio::runtime::Runtime::new().context("tokio runtime")?;
-            rt.block_on(mcp::serve(config))?;
+            rt.block_on(mcp::serve(mcp::McpOptions {
+                config,
+                allow_exec,
+                exec_repos: parse_csv(exec_repos.as_deref()),
+            }))?;
             Ok(ExitCode::SUCCESS)
         }
         Commands::Version => {

@@ -13,6 +13,10 @@ pub struct RepoRunResult {
     pub path: String,
     pub status: Option<ExitStatus>,
     pub error: Option<String>,
+    /// Captured stdout (when using capture mode / MCP).
+    pub stdout: Option<String>,
+    /// Captured stderr (when using capture mode / MCP).
+    pub stderr: Option<String>,
 }
 
 impl RepoRunResult {
@@ -86,6 +90,8 @@ pub fn exec_one(
             path: path.display().to_string(),
             status: None,
             error: Some("path does not exist".into()),
+            stdout: None,
+            stderr: None,
         });
     }
 
@@ -101,6 +107,8 @@ pub fn exec_one(
             path: path.display().to_string(),
             status: Some(dummy_success()),
             error: None,
+            stdout: None,
+            stderr: None,
         });
     }
 
@@ -110,7 +118,49 @@ pub fn exec_one(
         path: path.display().to_string(),
         status: Some(status),
         error: None,
+        stdout: None,
+        stderr: None,
     })
+}
+
+/// Run `cmd` capturing stdout/stderr (for MCP / non-interactive callers).
+pub fn exec_capture(
+    workspace: &Workspace,
+    repo: &RepoEntry,
+    cmd: &[String],
+) -> Result<RepoRunResult> {
+    if cmd.is_empty() {
+        bail!("no command specified");
+    }
+    let path = workspace.repo_path(repo);
+    if !path.exists() {
+        return Ok(RepoRunResult {
+            repo_id: repo.id.clone(),
+            path: path.display().to_string(),
+            status: None,
+            error: Some("path does not exist".into()),
+            stdout: None,
+            stderr: None,
+        });
+    }
+    match spawn_capture(&workspace.name, &workspace.root, repo, &path, cmd) {
+        Ok((status, stdout, stderr)) => Ok(RepoRunResult {
+            repo_id: repo.id.clone(),
+            path: path.display().to_string(),
+            status: Some(status),
+            error: None,
+            stdout: Some(stdout),
+            stderr: Some(stderr),
+        }),
+        Err(e) => Ok(RepoRunResult {
+            repo_id: repo.id.clone(),
+            path: path.display().to_string(),
+            status: None,
+            error: Some(e.to_string()),
+            stdout: None,
+            stderr: None,
+        }),
+    }
 }
 
 /// Run `cmd` across repos sequentially (inherit stdio) or in parallel (captured).
@@ -173,6 +223,8 @@ fn run_parallel(
                     path: path.display().to_string(),
                     status: Some(dummy_success()),
                     error: None,
+                    stdout: None,
+                    stderr: None,
                 }
             } else if !path.exists() {
                 RepoRunResult {
@@ -180,16 +232,20 @@ fn run_parallel(
                     path: path.display().to_string(),
                     status: None,
                     error: Some("path does not exist".into()),
+                    stdout: None,
+                    stderr: None,
                 }
             } else {
                 match spawn_capture(&ws_name, &root, &repo, &path, &cmd) {
                     Ok((status, stdout, stderr)) => {
-                        let _ = tx.send((repo.id.clone(), stdout, stderr));
+                        let _ = tx.send((repo.id.clone(), stdout.clone(), stderr.clone()));
                         RepoRunResult {
                             repo_id: repo.id.clone(),
                             path: path.display().to_string(),
                             status: Some(status),
                             error: None,
+                            stdout: Some(stdout),
+                            stderr: Some(stderr),
                         }
                     }
                     Err(e) => RepoRunResult {
@@ -197,6 +253,8 @@ fn run_parallel(
                         path: path.display().to_string(),
                         status: None,
                         error: Some(e.to_string()),
+                        stdout: None,
+                        stderr: None,
                     },
                 }
             };

@@ -13,6 +13,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_PROGRESS: never
+  # Prefer Node 24 for JS actions (GitHub deprecating Node 20 on runners).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   test:
@@ -24,7 +26,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -42,4 +44,3 @@ jobs:
 
       - name: Test
         run: cargo test --all --locked
-        # Single OS job should finish well under 10m with cache; hard cap above.

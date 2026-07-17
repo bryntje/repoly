@@ -28,6 +28,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_PROGRESS: never
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -62,7 +63,7 @@ jobs:
             bin: repoly.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -114,7 +115,7 @@ jobs:
           Set-Content -Path "dist/$name.zip.sha256" -Value "$hash  $name.zip" -NoNewline
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
           path: |
@@ -128,11 +129,12 @@ jobs:
     name: publish release
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -169,7 +171,7 @@ jobs:
 
             See [CHANGELOG.md](https://github.com/bryntje/repoly/blob/master/CHANGELOG.md) for details.
 
-            ### From crates.io (after publish)
+            ### From crates.io
 
             ```bash
             cargo install repoly

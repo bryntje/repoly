@@ -107,9 +107,12 @@ Same pattern:
 ## Agent workflow
 
 1. `plan` with a short task query  
-2. `build_context` (`format=prompt`) for selected repos  
-3. Edit only those repos  
-4. Optional: `commit` / `exec` if you enabled mutation  
+2. `build_context` (`format=prompt`) for **narrow** selected repos; raise `max_chars` when always-docs are large (often 90000–120000)  
+3. Check pack `budget` / tips — if `repo_files_included` is 0, open AGENTS.md in the target repo yourself  
+4. Edit only those repos  
+5. Optional: `commit` / `exec` if you enabled mutation  
+
+`repoly doctor` on the CLI reports always-doc size vs work-mode budget.
 
 ## Safety
 

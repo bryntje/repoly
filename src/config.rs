@@ -54,7 +54,18 @@ pub struct ContextSection {
     pub status_doc: Option<String>,
     #[serde(default)]
     pub max_chars: Option<usize>,
+    /// Hard cap on total always-doc bytes (optional). Applied on top of the
+    /// work-mode always budget (max_chars minus repo reserve).
+    #[serde(default)]
+    pub always_max_chars: Option<usize>,
+    /// Percent of `max_chars` reserved for selected-repo files in work mode
+    /// (query/repos/tags/role). Default 40 when unset. Clamped 10–80.
+    #[serde(default)]
+    pub repo_reserve_pct: Option<u8>,
 }
+
+/// Default share of the pack budget reserved for selected repo context files.
+pub const DEFAULT_REPO_RESERVE_PCT: u8 = 40;
 
 /// Optional `[policy]` in repoly.toml — generic safety knobs for any polyrepo.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -151,6 +162,14 @@ impl Workspace {
 
     pub fn max_chars(&self) -> usize {
         self.context.max_chars.unwrap_or(DEFAULT_MAX_CHARS)
+    }
+
+    /// Repo-file reserve percentage for work-mode context packs.
+    pub fn repo_reserve_pct(&self) -> u8 {
+        self.context
+            .repo_reserve_pct
+            .unwrap_or(DEFAULT_REPO_RESERVE_PCT)
+            .clamp(10, 80)
     }
 
     /// Soft validation. Returns warnings. Hard errors are returned via Result on load.

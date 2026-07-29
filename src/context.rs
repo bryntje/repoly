@@ -17,6 +17,24 @@ pub struct ContextPack {
     pub sections: Vec<Section>,
     pub truncated: bool,
     pub chars: usize,
+    /// How the pack budget was spent (for agents and `repoly doctor`).
+    pub budget: PackBudget,
+}
+
+/// Budget accounting for a context pack.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct PackBudget {
+    pub max_chars: usize,
+    /// Cap applied to always-docs (may be less than max_chars when repo reserve is on).
+    pub always_cap: usize,
+    /// Bytes reserved for selected-repo context files (work mode only).
+    pub repo_reserve: usize,
+    pub always_bytes: usize,
+    pub status_bytes: usize,
+    pub repo_file_bytes: usize,
+    pub repo_files_included: usize,
+    /// Human tips when the pack is thin or truncated.
+    pub tips: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,11 +103,24 @@ pub fn build_context(
             .collect()
     };
 
+    // If no query and no filters → include all repos as metadata only (no full file dump)
+    let full_file_mode = query.map(|q| !q.trim().is_empty()).unwrap_or(false)
+        || repos_filter.is_some()
+        || tags_filter.is_some()
+        || role_filter.is_some();
+
+    let (always_cap, repo_reserve) = work_mode_budgets(workspace, max_chars, full_file_mode);
+
     let mut sections: Vec<Section> = Vec::new();
     let mut truncated = false;
     let mut used = 0usize;
+    let mut always_bytes = 0usize;
+    let mut status_bytes = 0usize;
+    let mut repo_file_bytes = 0usize;
+    let mut repo_files_included = 0usize;
 
-    // Always docs first
+    // Always docs first — limited by always_cap so work mode keeps room for repos
+    let mut always_used = 0usize;
     for rel in &workspace.context.always {
         let path = workspace.root.join(rel);
         if !path.is_file() {
@@ -98,9 +129,17 @@ pub fn build_context(
         if should_skip_file(workspace, rel, &path) {
             continue;
         }
-        match read_budgeted(&path, max_chars.saturating_sub(used), &mut truncated) {
+        let room = always_cap.saturating_sub(always_used);
+        if room == 0 {
+            truncated = true;
+            break;
+        }
+        match read_budgeted(&path, room, &mut truncated) {
             Some(content) => {
-                used += content.len();
+                let n = content.len();
+                always_used += n;
+                always_bytes += n;
+                used += n;
                 sections.push(Section::AlwaysDoc {
                     path: path.display().to_string(),
                     content,
@@ -110,27 +149,29 @@ pub fn build_context(
         }
     }
 
-    // Optional status doc
+    // Optional status doc — never eat the repo reserve in work mode
     if let Some(rel) = &workspace.context.status_doc {
         let path = workspace.root.join(rel);
         if path.is_file() && !should_skip_file(workspace, rel, &path) {
-            // Cap status doc more aggressively
-            let cap = (max_chars.saturating_sub(used)).min(8_000);
-            if let Some(content) = read_budgeted(&path, cap, &mut truncated) {
-                used += content.len();
-                sections.push(Section::StatusDoc {
-                    path: path.display().to_string(),
-                    content,
-                });
+            let leave_for_repos = if full_file_mode { repo_reserve } else { 0 };
+            let room = max_chars
+                .saturating_sub(used)
+                .saturating_sub(leave_for_repos);
+            let cap = room.min(8_000);
+            if cap > 0 {
+                if let Some(content) = read_budgeted(&path, cap, &mut truncated) {
+                    status_bytes += content.len();
+                    used += content.len();
+                    sections.push(Section::StatusDoc {
+                        path: path.display().to_string(),
+                        content,
+                    });
+                }
+            } else {
+                truncated = true;
             }
         }
     }
-
-    // If no query and no filters → include all repos as metadata only (no full file dump)
-    let full_file_mode = query.map(|q| !q.trim().is_empty()).unwrap_or(false)
-        || repos_filter.is_some()
-        || tags_filter.is_some()
-        || role_filter.is_some();
 
     if full_file_mode {
         for repo in &selected {
@@ -153,9 +194,16 @@ pub fn build_context(
                     continue;
                 }
                 let remaining = max_chars.saturating_sub(used);
+                if remaining == 0 {
+                    truncated = true;
+                    break;
+                }
                 let per_file = remaining.min(12_000);
                 if let Some(content) = read_budgeted(&fp, per_file, &mut truncated) {
-                    used += content.len();
+                    let n = content.len();
+                    used += n;
+                    repo_file_bytes += n;
+                    repo_files_included += 1;
                     files.push(FileChunk {
                         path: cf.to_string(),
                         content,
@@ -205,6 +253,29 @@ pub fn build_context(
         }
     }
 
+    let always_on_disk = measure_always_on_disk(workspace);
+    let tips = build_tips(
+        full_file_mode,
+        max_chars,
+        always_cap,
+        always_on_disk,
+        always_bytes,
+        status_bytes,
+        repo_files_included,
+        truncated,
+    );
+
+    let budget = PackBudget {
+        max_chars,
+        always_cap,
+        repo_reserve,
+        always_bytes,
+        status_bytes,
+        repo_file_bytes,
+        repo_files_included,
+        tips,
+    };
+
     // Recompute chars from rendered prompt for honesty
     let mut pack = ContextPack {
         workspace: workspace.name.clone(),
@@ -218,6 +289,7 @@ pub fn build_context(
         sections,
         truncated,
         chars: 0,
+        budget,
     };
     let rendered = format_prompt(&pack);
     pack.chars = rendered.chars().count();
@@ -225,6 +297,96 @@ pub fn build_context(
         pack.truncated = true;
     }
     Ok(pack)
+}
+
+/// Work mode reserves space for repo files; overview mode may use full budget for always.
+fn work_mode_budgets(
+    workspace: &Workspace,
+    max_chars: usize,
+    full_file_mode: bool,
+) -> (usize, usize) {
+    if !full_file_mode {
+        let mut always_cap = max_chars;
+        if let Some(hard) = workspace.context.always_max_chars {
+            always_cap = always_cap.min(hard);
+        }
+        return (always_cap, 0);
+    }
+    let pct = workspace.repo_reserve_pct() as usize;
+    let repo_reserve = (max_chars * pct / 100).max(1);
+    let mut always_cap = max_chars.saturating_sub(repo_reserve);
+    if let Some(hard) = workspace.context.always_max_chars {
+        always_cap = always_cap.min(hard);
+    }
+    (always_cap, repo_reserve)
+}
+
+/// Sum of on-disk sizes of always-docs (for doctor / tips).
+pub fn measure_always_on_disk(workspace: &Workspace) -> usize {
+    let mut total = 0usize;
+    for rel in &workspace.context.always {
+        let path = workspace.root.join(rel);
+        if path.is_file() {
+            if let Ok(meta) = fs::metadata(&path) {
+                total += meta.len() as usize;
+            }
+        }
+    }
+    total
+}
+
+pub fn measure_status_on_disk(workspace: &Workspace) -> Option<usize> {
+    let rel = workspace.context.status_doc.as_ref()?;
+    let path = workspace.root.join(rel);
+    if !path.is_file() {
+        return None;
+    }
+    fs::metadata(&path).ok().map(|m| m.len() as usize)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_tips(
+    full_file_mode: bool,
+    max_chars: usize,
+    always_cap: usize,
+    always_on_disk: usize,
+    always_bytes: usize,
+    status_bytes: usize,
+    repo_files_included: usize,
+    truncated: bool,
+) -> Vec<String> {
+    let mut tips = Vec::new();
+    if always_on_disk > always_cap {
+        tips.push(format!(
+            "always-docs on disk (~{always_on_disk} bytes) exceed always budget ({always_cap}); \
+             raise max_chars, set always_max_chars, shrink always list, or lower repo_reserve_pct"
+        ));
+    }
+    if full_file_mode && repo_files_included == 0 {
+        tips.push(
+            "no per-repo context files (AGENTS.md/README/…) fit in the pack; \
+             raise --max-chars / context.max_chars or reduce always-docs"
+                .into(),
+        );
+    }
+    if full_file_mode && status_bytes == 0 && always_bytes + 1 >= always_cap {
+        tips.push(
+            "status_doc skipped (budget tight after always); use `repoly status` or raise max_chars"
+                .into(),
+        );
+    }
+    if truncated {
+        tips.push(
+            "pack truncated; narrow --repos / query or raise max_chars for fuller context".into(),
+        );
+    }
+    if max_chars < 24_000 && full_file_mode {
+        tips.push(
+            "max_chars is low for multi-doc workspaces; 90000–120000 is common for agent packs"
+                .into(),
+        );
+    }
+    tips
 }
 
 fn estimate_repo_header(repo: &RepoEntry) -> usize {
@@ -416,6 +578,28 @@ fn read_budgeted(path: &Path, budget: usize, truncated: &mut bool) -> Option<Str
     Some(out)
 }
 
+fn budget_header(pack: &ContextPack) -> String {
+    let b = &pack.budget;
+    let mut s = format!(
+        "# budget: max={} always={}/{} status={} repo_files={} ({} bytes) reserve={}\n",
+        b.max_chars,
+        b.always_bytes,
+        b.always_cap,
+        b.status_bytes,
+        b.repo_files_included,
+        b.repo_file_bytes,
+        b.repo_reserve,
+    );
+    if pack.truncated {
+        s.push_str("# truncated: yes\n");
+    }
+    for tip in &b.tips {
+        s.push_str(&format!("# tip: {tip}\n"));
+    }
+    s.push('\n');
+    s
+}
+
 pub fn format_markdown(pack: &ContextPack) -> String {
     let mut out = String::new();
     out.push_str(&format!("# repoly workspace: {}\n\n", pack.workspace));
@@ -427,8 +611,21 @@ pub fn format_markdown(pack: &ContextPack) -> String {
         "- **selected:** {}\n",
         pack.selected_repos.join(", ")
     ));
+    out.push_str(&format!(
+        "- **budget:** max={} · always {}/{} · status {} · repo_files {} ({} B) · reserve {}\n",
+        pack.budget.max_chars,
+        pack.budget.always_bytes,
+        pack.budget.always_cap,
+        pack.budget.status_bytes,
+        pack.budget.repo_files_included,
+        pack.budget.repo_file_bytes,
+        pack.budget.repo_reserve,
+    ));
     if pack.truncated {
         out.push_str("- **truncated:** yes\n");
+    }
+    for tip in &pack.budget.tips {
+        out.push_str(&format!("- **tip:** {tip}\n"));
     }
     out.push('\n');
 
@@ -510,7 +707,8 @@ pub fn format_prompt(pack: &ContextPack) -> String {
         out.push_str(&format!("# Query: {q}\n"));
     }
     out.push_str(&format!("# Selected: {}\n", pack.selected_repos.join(", ")));
-    out.push_str(&format!("# Root: {}\n\n", pack.root));
+    out.push_str(&format!("# Root: {}\n", pack.root));
+    out.push_str(&budget_header(pack));
 
     for section in &pack.sections {
         match section {
@@ -592,6 +790,11 @@ pub fn format_prompt(pack: &ContextPack) -> String {
             "- Note: this pack was truncated; ask for a narrower query or higher --max-chars.\n",
         );
     }
+    if pack.budget.repo_files_included == 0 && !pack.selected_repos.is_empty() {
+        out.push_str(
+            "- Note: no per-repo AGENTS/README fit; open those files in the target repos directly.\n",
+        );
+    }
     out.push('\n');
     out
 }
@@ -600,7 +803,9 @@ pub fn format_prompt(pack: &ContextPack) -> String {
 mod tests {
     use super::*;
     use crate::config::{ContextSection, RepoEntry};
+    use std::io::Write;
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     fn sample_ws() -> Workspace {
         Workspace {
@@ -644,7 +849,7 @@ mod tests {
     #[test]
     fn tag_filter() {
         let ws = sample_ws();
-        let tags = vec!["frontend".to_string()];
+        let tags = vec!["frontend".into()];
         let sel = select_repos(&ws, None, None, Some(&tags), None);
         assert_eq!(sel.len(), 1);
         assert_eq!(sel[0].id, "web");
@@ -656,7 +861,66 @@ mod tests {
         let web = ws.repos.iter().find(|r| r.id == "web").unwrap();
         let expanded = expand_with_deps(&ws, &[web]);
         let ids: Vec<_> = expanded.iter().map(|r| r.id.as_str()).collect();
-        assert!(ids.contains(&"web"));
         assert!(ids.contains(&"api"));
+        assert!(ids.contains(&"web"));
+    }
+
+    #[test]
+    fn work_mode_reserves_room_for_repo_files() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("api")).unwrap();
+        // Large always doc
+        let mut always = fs::File::create(root.join("ALWAYS.md")).unwrap();
+        write!(always, "{}", "A".repeat(20_000)).unwrap();
+        // Repo AGENTS
+        fs::write(root.join("api/AGENTS.md"), "repo-specific agents rules\n").unwrap();
+
+        let ws = Workspace {
+            name: "t".into(),
+            root: root.to_path_buf(),
+            config_path: root.join("repoly.toml"),
+            context: ContextSection {
+                always: vec!["ALWAYS.md".into()],
+                max_chars: Some(10_000),
+                repo_reserve_pct: Some(40),
+                ..Default::default()
+            },
+            policy: Default::default(),
+            ranking: Default::default(),
+            repos: vec![RepoEntry {
+                id: "api".into(),
+                path: "api".into(),
+                role: Some("api".into()),
+                tags: vec![],
+                depends_on: vec![],
+                description: None,
+                context_files: None,
+            }],
+        };
+
+        let pack = build_context(
+            &ws,
+            Some("api"),
+            Some(&["api".into()]),
+            None,
+            None,
+            None,
+            true,
+            false,
+        )
+        .unwrap();
+
+        assert!(
+            pack.budget.repo_files_included >= 1,
+            "expected repo file with reserve; budget={:?}",
+            pack.budget
+        );
+        assert!(
+            pack.budget.always_bytes <= pack.budget.always_cap,
+            "always exceeded cap: {:?}",
+            pack.budget
+        );
+        assert!(pack.budget.always_cap < pack.budget.max_chars);
     }
 }

@@ -7,6 +7,7 @@ pub mod commit;
 pub mod config;
 pub mod context;
 pub mod discover;
+pub mod doctor;
 pub mod mcp;
 pub mod plan;
 pub mod policy;

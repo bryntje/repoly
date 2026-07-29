@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-07-17
+
+### Added
+
+- **Context packing v2** — work-mode packs reserve room for selected-repo files (default 40% of `max_chars`)
+  - `context.repo_reserve_pct` and `context.always_max_chars` in `repoly.toml`
+  - Pack `budget` stats + tips in JSON/prompt/markdown (`always X/cap`, `repo_files`, truncation tips)
+- **`repoly doctor`** — workspace health: paths, always-doc vs budget, ranking/policy, MCP/ctx tips, ctx smoke
+
+### Changed
+
+- Work-mode `ctx` / MCP `build_context` no longer lets always-docs consume the entire budget before repo AGENTS/README
+
 ## [0.2.1] — 2026-07-17
 
 ### Added
@@ -87,7 +100,8 @@ First **public** release of `repoly` (internal dogfood history through 0.10.x is
 - Binary distribution: GitHub Releases on `v*` tags (macOS arm/x64, Linux x64, Windows x64).
 - crates.io: `cargo install repoly` after publish.
 
-[Unreleased]: https://github.com/bryntje/repoly/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/bryntje/repoly/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/bryntje/repoly/releases/tag/v0.2.2
 [0.2.1]: https://github.com/bryntje/repoly/releases/tag/v0.2.1
 [0.2.0]: https://github.com/bryntje/repoly/releases/tag/v0.2.0
 [0.1.1]: https://github.com/bryntje/repoly/releases/tag/v0.1.1

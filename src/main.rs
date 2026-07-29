@@ -1,10 +1,11 @@
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use repoly::cli::{Cli, Commands, CtxFormat, ListFormat, PlanFormat, StatusFormat};
+use repoly::cli::{Cli, Commands, CtxFormat, DoctorFormat, ListFormat, PlanFormat, StatusFormat};
 use repoly::commit;
 use repoly::config::{find_config, load_config, ConfigError};
 use repoly::context;
 use repoly::discover;
+use repoly::doctor;
 use repoly::mcp;
 use repoly::plan;
 use repoly::run;
@@ -39,6 +40,19 @@ fn run_cli() -> Result<ExitCode> {
         } => {
             cmd_init(from_code_workspace, force)?;
             Ok(ExitCode::SUCCESS)
+        }
+        Commands::Doctor { format, config } => {
+            let (cfg_path, workspace) = resolve_workspace(config.as_ref())?;
+            let report = doctor::run(&workspace, &cfg_path);
+            match format {
+                DoctorFormat::Text => print!("{}", doctor::format_human(&report)),
+                DoctorFormat::Json => println!("{}", serde_json::to_string_pretty(&report)?),
+            }
+            if report.errors > 0 {
+                Ok(ExitCode::from(1))
+            } else {
+                Ok(ExitCode::SUCCESS)
+            }
         }
         Commands::Validate { strict, config } => {
             let (cfg_path, workspace) = resolve_workspace(config.as_ref())?;

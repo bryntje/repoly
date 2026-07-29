@@ -8,6 +8,8 @@ name = "minimal"
 [context]
 always = ["docs/PLATFORM.md"]
 max_chars = 24000
+# repo_reserve_pct = 40
+# always_max_chars = 12000
 
 # Optional safety defaults (MCP host flags still override)
 # [policy]

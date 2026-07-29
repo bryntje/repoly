@@ -117,10 +117,11 @@ cd "$(repoly path web)" && claude
 |---------|---------|
 | `repoly init` | Create `repoly.toml` (optional `--from-code-workspace`) |
 | `repoly validate` | Schema + path checks (`--strict`) |
+| `repoly doctor` | Health: paths, always-doc budget, MCP/ctx tips |
 | `repoly list` | List repos (`--format json`) |
 | `repoly status` | Branch / dirty / ahead / behind |
 | `repoly plan [query]` | Which repos + `depends_on` order |
-| `repoly ctx [query]` | Context pack for humans/agents |
+| `repoly ctx [query]` | Context pack for humans/agents (budget-aware) |
 | `repoly root` / `path <id>` | Scripting helpers |
 | `repoly exec <repo> -- <cmd…>` | Run in one repo cwd |
 | `repoly run --repos a,b -- <cmd…>` | Same command across repos |
@@ -211,6 +212,9 @@ name = "acme"
 [context]
 always = ["docs/PLATFORM.md"]
 max_chars = 48000
+# Work-mode packs reserve room for selected-repo AGENTS/README (default 40%)
+# repo_reserve_pct = 40
+# always_max_chars = 24000
 
 [[repos]]
 id = "api"
@@ -237,6 +241,8 @@ Examples:
 - [`repoly.toml.example`](./repoly.toml.example)
 
 `plan` / `ctx` rank by tags, id, role, description, light synonyms, and multi-token coverage.
+
+**Context budget:** with a query or `--repos`, always-docs use at most `(100 − repo_reserve_pct)%` of `max_chars` so selected-repo files still fit. Packs include a `budget` summary and tips when truncated. Run `repoly doctor` if always-docs overwhelm the pack.
 
 ---
 
@@ -271,10 +277,9 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). Security: [SECURITY.md](./SECURITY.md)
 
 ## Roadmap
 
-- `repoly doctor`
-- Configurable synonyms / exec policy in `repoly.toml`
 - Linux aarch64 release binary
 - Homebrew (later)
+- Orient vs work pack modes (optional)
 
 ---
 

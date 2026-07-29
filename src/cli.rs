@@ -32,6 +32,13 @@ pub enum Commands {
         #[arg(long, short = 'c')]
         config: Option<PathBuf>,
     },
+    /// Workspace health: paths, always-doc budget, ranking, MCP/ctx tips
+    Doctor {
+        #[arg(long, value_enum, default_value_t = DoctorFormat::Text)]
+        format: DoctorFormat,
+        #[arg(long, short = 'c')]
+        config: Option<PathBuf>,
+    },
     /// List repos in the workspace
     List {
         #[arg(long, value_enum, default_value_t = ListFormat::Table)]
@@ -291,6 +298,13 @@ pub enum CtxFormat {
     #[default]
     Markdown,
     Prompt,
+    Json,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum, Default)]
+pub enum DoctorFormat {
+    #[default]
+    Text,
     Json,
 }
 

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-08-11
+
 ### Changed
 
 - **Human CLI formatting** — hierarchical headers/meta, severity badges, and optional color for `doctor`, `list`, `status`, `validate`, `run`/`commit` summaries
@@ -134,7 +136,8 @@ First **public** release of `repoly` (internal dogfood history through 0.10.x is
 - Binary distribution: GitHub Releases on `v*` tags (macOS arm/x64, Linux x64, Windows x64).
 - crates.io: `cargo install repoly` after publish.
 
-[Unreleased]: https://github.com/bryntje/repoly/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/bryntje/repoly/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/bryntje/repoly/releases/tag/v0.3.2
 [0.3.1]: https://github.com/bryntje/repoly/releases/tag/v0.3.1
 [0.3.0]: https://github.com/bryntje/repoly/releases/tag/v0.3.0
 [0.2.2]: https://github.com/bryntje/repoly/releases/tag/v0.2.2

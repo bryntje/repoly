@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/bryntje/repoly/actions/workflows/ci.yml/badge.svg)](https://github.com/bryntje/repoly/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](./LICENSE-MIT)
-[![Version](https://img.shields.io/badge/version-0.3.1-informational.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.2-informational.svg)](./CHANGELOG.md)
 [![Crates.io](https://img.shields.io/crates/v/repoly.svg)](https://crates.io/crates/repoly)
 
 Local CLI for **polyrepo** product stacks. Gives humans and AI coding tools (Grok, Claude Code, Codex, …) what IDE multi-root workspaces already have: a machine-readable map of repos, cross-repo status, and **agent-ready context packs**.
@@ -52,7 +52,7 @@ cargo install repoly
 Check:
 
 ```bash
-repoly version   # → repoly 0.3.1
+repoly version   # → repoly 0.3.2
 ```
 
 ```bash

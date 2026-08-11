@@ -136,8 +136,16 @@ mod tests {
     #[test]
     fn scores_sections() {
         let mut secs = vec![
-            AlwaysSection { title: "Naming".into(), content: "naming schema".into(), score: 0 },
-            AlwaysSection { title: "Agents".into(), content: "hermit".into(), score: 0 },
+            AlwaysSection {
+                title: "Naming".into(),
+                content: "naming schema".into(),
+                score: 0,
+            },
+            AlwaysSection {
+                title: "Agents".into(),
+                content: "hermit".into(),
+                score: 0,
+            },
         ];
         score_sections(&mut secs, Some("naming"), &[], &["naming".into()], &[]);
         assert!(secs[0].score > secs[1].score);

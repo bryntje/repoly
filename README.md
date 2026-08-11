@@ -211,6 +211,16 @@ name = "acme"
 
 [context]
 always = ["docs/PLATFORM.md"]
+
+# Rich always-doc syntax (new)
+[[always]]
+path = "Innersync-meta/NAMING-SCHEMA.md"
+tags = ["naming", "meta"]
+priority = 80
+
+[[always]]
+path = "Innersync-meta/AGENTS.md"
+tags = ["agents", "hermit", "core"]
 max_chars = 48000
 # Work-mode packs reserve room for selected-repo AGENTS/README (default 40%)
 # repo_reserve_pct = 40

@@ -2,6 +2,7 @@
 //!
 //! Library surface used by the `repoly` binary and integration tests.
 
+pub mod always;
 pub mod cli;
 pub mod commit;
 pub mod config;

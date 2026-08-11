@@ -121,7 +121,8 @@ pub fn build_context(
 
     // Always docs first — limited by always_cap so work mode keeps room for repos
     let mut always_used = 0usize;
-    for rel in &workspace.context.always {
+    for doc in &workspace.context.always {
+        let rel = doc.path();
         let path = workspace.root.join(rel);
         if !path.is_file() {
             continue;
@@ -129,13 +130,63 @@ pub fn build_context(
         if should_skip_file(workspace, rel, &path) {
             continue;
         }
+
+        // Tag-based conditional always-doc (C)
+        let doc_tags = doc.tags();
+        if !doc_tags.is_empty() {
+            let selected_tags: std::collections::HashSet<&str> = selected
+                .iter()
+                .flat_map(|r| r.tags.iter().map(|s| s.as_str()))
+                .collect();
+            if !doc_tags.iter().any(|t| selected_tags.contains(t.as_str())) {
+                continue;
+            }
+        }
         let room = always_cap.saturating_sub(always_used);
         if room == 0 {
             truncated = true;
             break;
         }
-        match read_budgeted(&path, room, &mut truncated) {
-            Some(content) => {
+        // Use smart section extraction when possible
+        if let Ok(raw) = std::fs::read_to_string(&path) {
+            let mut secs = crate::always::extract_sections(&raw);
+            crate::always::score_sections(
+                &mut secs,
+                query,
+                &selected
+                    .iter()
+                    .flat_map(|r| r.tags.iter().cloned())
+                    .collect::<Vec<_>>(),
+                doc.tags(),
+                doc.sections(),
+            );
+            let (chosen, sec_trunc) = crate::always::select_relevant_sections(secs, room);
+            if sec_trunc {
+                truncated = true;
+            }
+
+            for s in chosen {
+                let n = s.content.len();
+                if always_used + n > room {
+                    break;
+                }
+                always_used += n;
+                always_bytes += n;
+                used += n;
+
+                let header = if s.title == "Top" {
+                    String::new()
+                } else {
+                    format!("## {}\n", s.title)
+                };
+                sections.push(Section::AlwaysDoc {
+                    path: format!("{}#{}", path.display(), s.title),
+                    content: format!("{}{}", header, s.content),
+                });
+            }
+        } else {
+            // Fallback to full file
+            if let Some(content) = read_budgeted(&path, room, &mut truncated) {
                 let n = content.len();
                 always_used += n;
                 always_bytes += n;
@@ -145,7 +196,6 @@ pub fn build_context(
                     content,
                 });
             }
-            None => truncated = true,
         }
     }
 
@@ -324,7 +374,8 @@ fn work_mode_budgets(
 /// Sum of on-disk sizes of always-docs (for doctor / tips).
 pub fn measure_always_on_disk(workspace: &Workspace) -> usize {
     let mut total = 0usize;
-    for rel in &workspace.context.always {
+    for doc in &workspace.context.always {
+        let rel = doc.path();
         let path = workspace.root.join(rel);
         if path.is_file() {
             if let Ok(meta) = fs::metadata(&path) {

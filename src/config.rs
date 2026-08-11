@@ -48,8 +48,9 @@ pub struct WorkspaceSection {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ContextSection {
+    /// Supports both old string syntax and new rich [[always]] syntax.
     #[serde(default)]
-    pub always: Vec<String>,
+    pub always: Vec<AlwaysDoc>,
     #[serde(default)]
     pub status_doc: Option<String>,
     #[serde(default)]
@@ -62,6 +63,54 @@ pub struct ContextSection {
     /// (query/repos/tags/role). Default 40 when unset. Clamped 10–80.
     #[serde(default)]
     pub repo_reserve_pct: Option<u8>,
+}
+
+/// Rich always-doc entry (supports both string and table form in TOML).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AlwaysDoc {
+    /// Simple path (backward compatible)
+    Path(String),
+    /// Rich entry with optional tags, sections and priority
+    Rich {
+        path: String,
+        #[serde(default)]
+        tags: Vec<String>,
+        #[serde(default)]
+        sections: Vec<String>,
+        #[serde(default)]
+        priority: Option<u8>,
+    },
+}
+
+impl AlwaysDoc {
+    pub fn path(&self) -> &str {
+        match self {
+            AlwaysDoc::Path(p) => p,
+            AlwaysDoc::Rich { path, .. } => path,
+        }
+    }
+
+    pub fn tags(&self) -> &[String] {
+        match self {
+            AlwaysDoc::Path(_) => &[],
+            AlwaysDoc::Rich { tags, .. } => tags,
+        }
+    }
+
+    pub fn priority(&self) -> u8 {
+        match self {
+            AlwaysDoc::Path(_) => 50,
+            AlwaysDoc::Rich { priority, .. } => priority.unwrap_or(50),
+        }
+    }
+
+    pub fn sections(&self) -> &[String] {
+        match self {
+            AlwaysDoc::Path(_) => &[],
+            AlwaysDoc::Rich { sections, .. } => sections,
+        }
+    }
 }
 
 /// Default share of the pack budget reserved for selected repo context files.
@@ -352,5 +401,18 @@ path = "./b"
         )
         .unwrap();
         assert!(load_config(&path).is_err());
+    }
+}
+
+#[allow(clippy::items_after_test_module)]
+impl From<&str> for AlwaysDoc {
+    fn from(s: &str) -> Self {
+        AlwaysDoc::Path(s.to_string())
+    }
+}
+
+impl From<String> for AlwaysDoc {
+    fn from(s: String) -> Self {
+        AlwaysDoc::Path(s)
     }
 }

@@ -121,7 +121,8 @@ pub fn build_context(
 
     // Always docs first — limited by always_cap so work mode keeps room for repos
     let mut always_used = 0usize;
-    for doc in &workspace.context.always { let rel = doc.path();
+    for doc in &workspace.context.always {
+        let rel = doc.path();
         let path = workspace.root.join(rel);
         if !path.is_file() {
             continue;
@@ -133,7 +134,8 @@ pub fn build_context(
         // Tag-based conditional always-doc (C)
         let doc_tags = doc.tags();
         if !doc_tags.is_empty() {
-            let selected_tags: std::collections::HashSet<&str> = selected.iter()
+            let selected_tags: std::collections::HashSet<&str> = selected
+                .iter()
                 .flat_map(|r| r.tags.iter().map(|s| s.as_str()))
                 .collect();
             if !doc_tags.iter().any(|t| selected_tags.contains(t.as_str())) {
@@ -151,21 +153,32 @@ pub fn build_context(
             crate::always::score_sections(
                 &mut secs,
                 query,
-                &selected.iter().flat_map(|r| r.tags.iter().cloned()).collect::<Vec<_>>(),
+                &selected
+                    .iter()
+                    .flat_map(|r| r.tags.iter().cloned())
+                    .collect::<Vec<_>>(),
                 doc.tags(),
                 doc.sections(),
             );
             let (chosen, sec_trunc) = crate::always::select_relevant_sections(secs, room);
-            if sec_trunc { truncated = true; }
+            if sec_trunc {
+                truncated = true;
+            }
 
             for s in chosen {
                 let n = s.content.len();
-                if always_used + n > room { break; }
+                if always_used + n > room {
+                    break;
+                }
                 always_used += n;
                 always_bytes += n;
                 used += n;
 
-                let header = if s.title == "Top" { String::new() } else { format!("## {}\n", s.title) };
+                let header = if s.title == "Top" {
+                    String::new()
+                } else {
+                    format!("## {}\n", s.title)
+                };
                 sections.push(Section::AlwaysDoc {
                     path: format!("{}#{}", path.display(), s.title),
                     content: format!("{}{}", header, s.content),
@@ -361,7 +374,8 @@ fn work_mode_budgets(
 /// Sum of on-disk sizes of always-docs (for doctor / tips).
 pub fn measure_always_on_disk(workspace: &Workspace) -> usize {
     let mut total = 0usize;
-    for doc in &workspace.context.always { let rel = doc.path();
+    for doc in &workspace.context.always {
+        let rel = doc.path();
         let path = workspace.root.join(rel);
         if path.is_file() {
             if let Ok(meta) = fs::metadata(&path) {

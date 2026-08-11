@@ -98,7 +98,8 @@ pub fn run(workspace: &Workspace, config_path: &Path) -> DoctorReport {
         always_cap = always_cap.min(hard);
     }
 
-    for doc in &workspace.context.always { let rel = doc.path();
+    for doc in &workspace.context.always {
+        let rel = doc.path();
         let p = workspace.root.join(rel);
         if !p.is_file() {
             checks.push(Check {

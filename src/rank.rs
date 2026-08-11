@@ -245,7 +245,8 @@ pub fn rank_repos<'a>(workspace: &'a Workspace, query: &str) -> Vec<RankedRepo<'
 
 fn load_always_blob(workspace: &Workspace) -> String {
     let mut s = String::new();
-    for doc in &workspace.context.always { let rel = doc.path();
+    for doc in &workspace.context.always {
+        let rel = doc.path();
         let p = workspace.root.join(rel);
         if let Some(chunk) = read_snippet(&p, 6_000) {
             s.push_str(&chunk);

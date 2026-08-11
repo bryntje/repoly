@@ -36,10 +36,12 @@ tags = [
   "meta",
   "status",
   "naming",
+  "naming-schema",
+  "propagation",
   "release",
   "security",
 ]
-description = "Cross-repo docs, status, naming aliases (META) — not product code"
+description = "Cross-repo docs, status, naming schema & propagation rules (META) — single source of truth for naming, agents and release process"
 
 # ── Platform core ───────────────────────────────────────────────────────────
 

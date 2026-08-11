@@ -268,7 +268,7 @@ fn run_multi_repo() {
         .args(["--", "git", "rev-parse", "--is-inside-work-tree"])
         .assert()
         .success()
-        .stderr(predicate::str::contains("[ok]"));
+        .stderr(predicate::str::contains("[ok"));
 }
 
 #[test]
@@ -307,7 +307,7 @@ fn commit_dry_run_and_real() {
         .arg(fx.config())
         .assert()
         .success()
-        .stderr(predicate::str::contains("[ok]"));
+        .stderr(predicate::str::contains("[ok"));
 
     // verify git log
     let log = Command::new("git")
@@ -338,6 +338,6 @@ fn init_writes_repoly_toml() {
         .arg("init")
         .assert()
         .success()
-        .stdout(predicate::str::contains("wrote"));
+        .stdout(predicate::str::contains("ok:"));
     assert!(tmp.path().join("repoly.toml").is_file());
 }

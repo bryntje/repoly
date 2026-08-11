@@ -258,14 +258,18 @@ fn git(cwd: &Path, args: &[&str]) -> Result<(i32, String, String)> {
     ))
 }
 
-pub fn print_results(results: &[CommitResult]) {
-    eprintln!("\n── commit summary ──");
+pub fn print_results(results: &[CommitResult], style: &crate::ui::StyleCtx) {
+    use crate::ui::BadgeKind;
+
+    eprintln!();
+    eprintln!("{}", style.section("commit summary"));
     for r in results {
         if r.skipped {
             eprintln!(
-                "  [skip] {} — {}",
-                r.repo,
-                r.skip_reason.as_deref().unwrap_or("skipped")
+                "{}{} — {}",
+                style.badge_bracketed(BadgeKind::Skip),
+                style.bold(&r.repo),
+                style.dim(r.skip_reason.as_deref().unwrap_or("skipped"))
             );
             continue;
         }
@@ -275,16 +279,22 @@ pub fn print_results(results: &[CommitResult]) {
                 .as_deref()
                 .map(|s| if s.len() > 8 { &s[..8] } else { s })
                 .unwrap_or("?");
-            eprintln!("  [ok]   {}  {sha}", r.repo);
+            eprintln!(
+                "{}{}  {}",
+                style.badge_bracketed(BadgeKind::Ok),
+                style.bold(&r.repo),
+                style.dim(sha)
+            );
         } else {
             eprintln!(
-                "  [FAIL] {}  {}",
-                r.repo,
+                "{}{}  {}",
+                style.badge_bracketed(BadgeKind::Fail),
+                style.bold(&r.repo),
                 r.error.as_deref().unwrap_or("failed")
             );
             if !r.stderr.trim().is_empty() {
                 for line in r.stderr.lines().take(5) {
-                    eprintln!("         {line}");
+                    eprintln!("         {}", style.dim(line));
                 }
             }
         }

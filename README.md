@@ -87,6 +87,7 @@ repoly status
 repoly plan --format grok "login checkout"
 repoly ctx --format grok "login checkout" > /tmp/brief.md
 repoly doctor   # paths, budget, optional untracked sibling git dirs
+# Human output: colors when TTY (`--color auto|always|never`, respects NO_COLOR)
 ```
 
 Then open a coding agent **in one repo**:

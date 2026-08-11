@@ -169,38 +169,49 @@ fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-pub fn print_table(report: &StatusReport) {
-    println!("workspace: {}  root: {}", report.workspace, report.root);
+pub fn print_table(report: &StatusReport, style: &crate::ui::StyleCtx) {
+    println!("{}", style.header("repoly status"));
+    println!("{}", style.meta_line("workspace", &report.workspace));
+    println!("{}", style.meta_line("root", &report.root));
     println!();
-    println!(
+
+    let header = format!(
         "{:<18} {:<22} {:<8} {:>5} {:>6} SUBJECT",
         "ID", "BRANCH", "DIRTY", "AHEAD", "BEHIND"
     );
-    println!("{}", "-".repeat(90));
+    println!("{}", style.dim(&header));
+    println!("{}", style.rule(90));
+
     for r in &report.repos {
         if !r.exists {
+            let dirty = style.red(&format!("{:<8}", "missing"));
             println!(
-                "{:<18} {:<22} {:<8} {:>5} {:>6} {}",
-                r.id,
+                "{} {:<22} {} {:>5} {:>6} {}",
+                style.bold(&format!("{:<18}", r.id)),
                 "-",
-                "missing",
+                dirty,
                 "-",
                 "-",
-                r.error.as_deref().unwrap_or("")
+                style.dim(r.error.as_deref().unwrap_or(""))
             );
             continue;
         }
         if !r.is_git {
             println!(
-                "{:<18} {:<22} {:<8} {:>5} {:>6} (not a git repo)",
-                r.id, "-", "n/a", "-", "-"
+                "{} {:<22} {:<8} {:>5} {:>6} {}",
+                style.bold(&format!("{:<18}", r.id)),
+                "-",
+                "n/a",
+                "-",
+                "-",
+                style.dim("(not a git repo)")
             );
             continue;
         }
         let dirty = if r.dirty {
-            format!("{}", r.dirty_count)
+            style.yellow(&format!("{:<8}", r.dirty_count))
         } else {
-            "clean".into()
+            style.dim(&format!("{:<8}", "clean"))
         };
         let ahead = r.ahead.map(|n| n.to_string()).unwrap_or_else(|| "-".into());
         let behind = r
@@ -212,11 +223,17 @@ pub fn print_table(report: &StatusReport) {
         let err = r
             .error
             .as_ref()
-            .map(|e| format!(" !{e}"))
+            .map(|e| format!(" {}", style.red(&format!("!{e}"))))
             .unwrap_or_default();
         println!(
-            "{:<18} {:<22} {:<8} {:>5} {:>6} {}{}",
-            r.id, branch, dirty, ahead, behind, subject, err
+            "{} {:<22} {} {:>5} {:>6} {}{}",
+            style.bold(&format!("{:<18}", r.id)),
+            branch,
+            dirty,
+            ahead,
+            behind,
+            style.dim(subject),
+            err
         );
     }
 }

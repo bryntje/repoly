@@ -1,3 +1,4 @@
+use crate::ui::ColorMode;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
@@ -9,6 +10,10 @@ use std::path::PathBuf;
 and builds agent-ready context packs. Local-only, CLI-first, no IDE required."
 )]
 pub struct Cli {
+    /// When to use ANSI colors in human-facing output (json/prompt/grok never colored)
+    #[arg(long, value_enum, default_value_t = ColorMode::Auto, global = true)]
+    pub color: ColorMode,
+
     #[command(subcommand)]
     pub command: Commands,
 }

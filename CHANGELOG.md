@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Human CLI formatting** — hierarchical headers/meta, severity badges, and optional color for `doctor`, `list`, `status`, `validate`, `run`/`commit` summaries
+  - Global `--color auto|always|never` (default auto; respects `NO_COLOR` / `CLICOLOR_FORCE`)
+  - `REPOLY_ASCII=1` forces ASCII badges instead of unicode symbols
+  - Agent formats (`json` / `prompt` / `grok` / MCP) stay plain (no ANSI)
+
 ## [0.3.1] — 2026-08-11
 
 ### Fixed

@@ -129,6 +129,7 @@ pub fn exec_one(
     cmd: &[String],
     dry_run: bool,
     mode: LaunchMode,
+    style: &crate::ui::StyleCtx,
 ) -> Result<RepoRunResult> {
     if cmd.is_empty() {
         bail!("no command specified (usage: repoly exec <repo> -- <command...>)");
@@ -145,9 +146,10 @@ pub fn exec_one(
 
     if dry_run {
         eprintln!(
-            "[dry-run] {} @ {}: {}",
-            repo.id,
-            path.display(),
+            "{} {} @ {}: {}",
+            style.dim("[dry-run]"),
+            style.bold(&repo.id),
+            style.dim(&path.display().to_string()),
             format_cmd(cmd, mode)
         );
         return Ok(RepoRunResult {
@@ -242,6 +244,7 @@ pub fn exec_capture_opts(
 }
 
 /// Run `cmd` across repos sequentially (inherit stdio) or in parallel (captured).
+#[allow(clippy::too_many_arguments)]
 pub fn run_many(
     workspace: &Workspace,
     repos: &[&RepoEntry],
@@ -250,6 +253,7 @@ pub fn run_many(
     continue_on_error: bool,
     dry_run: bool,
     mode: LaunchMode,
+    style: &crate::ui::StyleCtx,
 ) -> Result<Vec<RepoRunResult>> {
     if cmd.is_empty() {
         bail!("no command specified (usage: repoly run --repos a,b -- <command...>)");
@@ -261,8 +265,8 @@ pub fn run_many(
 
     let mut results = Vec::new();
     for repo in repos {
-        print_banner(&repo.id, &workspace.repo_path(repo), cmd, mode);
-        let r = exec_one(workspace, repo, cmd, dry_run, mode)?;
+        print_banner(&repo.id, &workspace.repo_path(repo), cmd, mode, style);
+        let r = exec_one(workspace, repo, cmd, dry_run, mode, style)?;
         let ok = r.success();
         results.push(r);
         if !ok && !continue_on_error {
@@ -387,10 +391,21 @@ fn run_parallel(
     Ok(results)
 }
 
-fn print_banner(id: &str, path: &Path, cmd: &[String], mode: LaunchMode) {
-    eprintln!("\n══ {} ══", id);
-    eprintln!("path: {}", path.display());
-    eprintln!("$ {}", format_cmd(cmd, mode));
+fn print_banner(
+    id: &str,
+    path: &Path,
+    cmd: &[String],
+    mode: LaunchMode,
+    style: &crate::ui::StyleCtx,
+) {
+    eprintln!();
+    if style.color_enabled() {
+        eprintln!("{}", style.cyan(&format!("══ {} ══", id)));
+    } else {
+        eprintln!("══ {} ══", id);
+    }
+    eprintln!("{}", style.meta_line("path", &path.display().to_string()));
+    eprintln!("{}", style.meta_line("$", &format_cmd(cmd, mode)));
 }
 
 fn inject_env(cmd: &mut Command, workspace_name: &str, root: &Path, repo: &RepoEntry, path: &Path) {
@@ -647,13 +662,20 @@ fn dummy_success() -> ExitStatus {
     }
 }
 
-pub fn summarize(results: &[RepoRunResult]) {
+pub fn summarize(results: &[RepoRunResult], style: &crate::ui::StyleCtx) {
+    use crate::ui::BadgeKind;
+
     if results.is_empty() {
         return;
     }
-    eprintln!("\n── summary ──");
+    eprintln!();
+    eprintln!("{}", style.section("summary"));
     for r in results {
-        let mark = if r.success() { "ok" } else { "FAIL" };
+        let badge = if r.success() {
+            style.badge_bracketed(BadgeKind::Ok)
+        } else {
+            style.badge_bracketed(BadgeKind::Fail)
+        };
         let code = r
             .code()
             .map(|c| c.to_string())
@@ -663,7 +685,12 @@ pub fn summarize(results: &[RepoRunResult]) {
             .as_ref()
             .map(|e| format!(" ({e})"))
             .unwrap_or_default();
-        eprintln!("  [{mark}] {}  exit={code}{err}  ({})", r.repo_id, r.path);
+        eprintln!(
+            "{}{}  exit={code}{err}  ({})",
+            badge,
+            style.bold(&r.repo_id),
+            style.dim(&r.path)
+        );
     }
 }
 

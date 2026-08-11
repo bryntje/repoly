@@ -434,32 +434,50 @@ fn normalize_key(s: &str) -> String {
     s.replace('\\', "/").to_lowercase()
 }
 
-pub fn format_human(report: &DoctorReport) -> String {
+pub fn format_human(report: &DoctorReport, style: &crate::ui::StyleCtx) -> String {
+    use crate::ui::BadgeKind;
+
     let mut out = String::new();
-    out.push_str(&format!(
-        "repoly doctor — workspace `{}`\n  config: {}\n  root:   {}\n\n",
-        report.workspace, report.config_path, report.root
-    ));
+    out.push_str(&style.header("repoly doctor"));
+    out.push('\n');
+    out.push_str(&style.meta_line("workspace", &report.workspace));
+    out.push('\n');
+    out.push_str(&style.meta_line("config", &report.config_path));
+    out.push('\n');
+    out.push_str(&style.meta_line("root", &report.root));
+    out.push_str("\n\n");
+
     for c in &report.checks {
-        let mark = match c.severity {
-            Severity::Ok => "ok  ",
-            Severity::Warn => "warn",
-            Severity::Error => "err ",
-            Severity::Info => "info",
+        let kind = match c.severity {
+            Severity::Ok => BadgeKind::Ok,
+            Severity::Warn => BadgeKind::Warn,
+            Severity::Error => BadgeKind::Err,
+            Severity::Info => BadgeKind::Info,
         };
-        out.push_str(&format!("  [{mark}] {}\n", c.message));
+        out.push_str(&style.badge_bracketed(kind));
+        out.push_str(&c.message);
+        out.push('\n');
     }
-    out.push_str(&format!(
-        "\nsummary: {} ok · {} warn · {} error\n",
-        report.ok, report.warnings, report.errors
+
+    out.push('\n');
+    out.push_str(&style.meta_line(
+        "summary",
+        &format!(
+            "{} ok · {} warn · {} error",
+            report.ok, report.warnings, report.errors
+        ),
     ));
-    if report.errors > 0 {
-        out.push_str("result: FAIL\n");
+    out.push('\n');
+
+    let colored = if report.errors > 0 {
+        style.red("FAIL")
     } else if report.warnings > 0 {
-        out.push_str("result: PASS with warnings\n");
+        style.yellow("PASS with warnings")
     } else {
-        out.push_str("result: PASS\n");
-    }
+        style.green("PASS")
+    };
+    out.push_str(&style.meta_line("result", &colored));
+    out.push('\n');
     out
 }
 

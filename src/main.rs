@@ -10,6 +10,7 @@ use repoly::mcp;
 use repoly::plan;
 use repoly::run;
 use repoly::status;
+use repoly::ui::{ColorMode, StyleCtx};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -17,7 +18,8 @@ fn main() -> ExitCode {
     match run_cli() {
         Ok(code) => code,
         Err(err) => {
-            eprintln!("error: {err:#}");
+            let style = StyleCtx::resolve(ColorMode::Auto);
+            eprintln!("{} {err:#}", style.error_prefix());
             let is_not_found = err
                 .chain()
                 .any(|e| matches!(e.downcast_ref::<ConfigError>(), Some(ConfigError::NotFound)));
@@ -32,20 +34,21 @@ fn main() -> ExitCode {
 
 fn run_cli() -> Result<ExitCode> {
     let cli = Cli::parse();
+    let style = StyleCtx::resolve(cli.color);
 
     match cli.command {
         Commands::Init {
             from_code_workspace,
             force,
         } => {
-            cmd_init(from_code_workspace, force)?;
+            cmd_init(from_code_workspace, force, &style)?;
             Ok(ExitCode::SUCCESS)
         }
         Commands::Doctor { format, config } => {
             let (cfg_path, workspace) = resolve_workspace(config.as_ref())?;
             let report = doctor::run(&workspace, &cfg_path);
             match format {
-                DoctorFormat::Text => print!("{}", doctor::format_human(&report)),
+                DoctorFormat::Text => print!("{}", doctor::format_human(&report, &style)),
                 DoctorFormat::Json => println!("{}", serde_json::to_string_pretty(&report)?),
             }
             if report.errors > 0 {
@@ -58,7 +61,7 @@ fn run_cli() -> Result<ExitCode> {
             let (cfg_path, workspace) = resolve_workspace(config.as_ref())?;
             let warnings = workspace.validate(strict);
             for w in &warnings {
-                eprintln!("warning: {w}");
+                eprintln!("{} {w}", style.warning_prefix());
             }
             if strict && !warnings.is_empty() {
                 bail!(
@@ -71,7 +74,8 @@ fn run_cli() -> Result<ExitCode> {
                 let p = workspace.repo_path(repo);
                 if !p.exists() {
                     eprintln!(
-                        "error: repo '{}' path does not exist: {}",
+                        "{} repo '{}' path does not exist: {}",
+                        style.error_prefix(),
                         repo.id,
                         p.display()
                     );
@@ -81,7 +85,11 @@ fn run_cli() -> Result<ExitCode> {
             for doc in &workspace.context.always {
                 let p = workspace.root.join(doc.path());
                 if !p.exists() {
-                    eprintln!("warning: always-doc missing: {}", p.display());
+                    eprintln!(
+                        "{} always-doc missing: {}",
+                        style.warning_prefix(),
+                        p.display()
+                    );
                     if strict {
                         errors += 1;
                     }
@@ -94,7 +102,8 @@ fn run_cli() -> Result<ExitCode> {
                 );
             }
             println!(
-                "ok: {} ({} repos)",
+                "{} {} ({} repos)",
+                style.ok_prefix(),
                 cfg_path.display(),
                 workspace.repos.len()
             );
@@ -104,21 +113,42 @@ fn run_cli() -> Result<ExitCode> {
             let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
             match format {
                 ListFormat::Table => {
+                    println!("{}", style.header("repoly list"));
+                    println!("{}", style.meta_line("workspace", &workspace.name));
                     println!(
+                        "{}",
+                        style.meta_line("root", &workspace.root.display().to_string())
+                    );
+                    println!();
+                    let header = format!(
                         "{:<20} {:<8} {:<6} {:<6} PATH",
                         "ID", "ROLE", "EXISTS", "GIT"
                     );
+                    println!("{}", style.dim(&header));
+                    println!("{}", style.rule(72));
                     for repo in &workspace.repos {
                         let path = workspace.repo_path(repo);
                         let exists = path.exists();
                         let is_git = exists && path.join(".git").exists();
+                        let exists_s = if exists {
+                            style.green(&format!("{:<6}", "yes"))
+                        } else {
+                            style.red(&format!("{:<6}", "no"))
+                        };
+                        let git_s = if is_git {
+                            style.green(&format!("{:<6}", "yes"))
+                        } else if exists {
+                            style.yellow(&format!("{:<6}", "no"))
+                        } else {
+                            style.dim(&format!("{:<6}", "no"))
+                        };
                         println!(
-                            "{:<20} {:<8} {:<6} {:<6} {}",
-                            repo.id,
-                            repo.role.as_deref().unwrap_or("-"),
-                            if exists { "yes" } else { "no" },
-                            if is_git { "yes" } else { "no" },
-                            path.display()
+                            "{} {:<8} {} {} {}",
+                            style.bold(&format!("{:<20}", repo.id)),
+                            style.dim(repo.role.as_deref().unwrap_or("-")),
+                            exists_s,
+                            git_s,
+                            style.dim(&path.display().to_string())
                         );
                     }
                 }
@@ -163,7 +193,7 @@ fn run_cli() -> Result<ExitCode> {
             let filter = parse_csv(repos.as_deref());
             let report = status::collect_status(&workspace, filter.as_deref(), fetch);
             match format {
-                StatusFormat::Table => status::print_table(&report),
+                StatusFormat::Table => status::print_table(&report, &style),
                 StatusFormat::Json => {
                     println!("{}", serde_json::to_string_pretty(&report)?);
                 }
@@ -289,7 +319,7 @@ fn run_cli() -> Result<ExitCode> {
                     eprint!("{}", r.stderr);
                 }
             }
-            commit::print_results(&results);
+            commit::print_results(&results, &style);
             Ok(ExitCode::from(commit::exit_code(&results)))
         }
         Commands::Exec {
@@ -302,7 +332,7 @@ fn run_cli() -> Result<ExitCode> {
             let (_cfg_path, workspace) = resolve_workspace(config.as_ref())?;
             let entry = run::resolve_repo(&workspace, &repo)?;
             let mode = run::LaunchMode::from_shell_flag(shell);
-            let result = run::exec_one(&workspace, entry, &cmd, dry_run, mode)?;
+            let result = run::exec_one(&workspace, entry, &cmd, dry_run, mode, &style)?;
             if let Some(err) = &result.error {
                 bail!("exec failed in '{}': {err}", result.repo_id);
             }
@@ -336,8 +366,9 @@ fn run_cli() -> Result<ExitCode> {
                 continue_on_error,
                 dry_run,
                 mode,
+                &style,
             )?;
-            run::summarize(&results);
+            run::summarize(&results, &style);
             Ok(ExitCode::from(run::exit_code_from_results(&results)))
         }
         Commands::Mcp {
@@ -402,7 +433,7 @@ fn parse_csv(s: Option<&str>) -> Option<Vec<String>> {
     .filter(|v: &Vec<String>| !v.is_empty())
 }
 
-fn cmd_init(from_code_workspace: Option<PathBuf>, force: bool) -> Result<()> {
+fn cmd_init(from_code_workspace: Option<PathBuf>, force: bool, style: &StyleCtx) -> Result<()> {
     let out = PathBuf::from("repoly.toml");
     if out.exists() && !force {
         bail!("repoly.toml already exists (use --force to overwrite)");
@@ -417,6 +448,6 @@ fn cmd_init(from_code_workspace: Option<PathBuf>, force: bool) -> Result<()> {
     };
 
     std::fs::write(&out, content).with_context(|| format!("writing {}", out.display()))?;
-    println!("wrote {}", out.display());
+    println!("{} {}", style.ok_prefix(), out.display());
     Ok(())
 }

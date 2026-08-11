@@ -102,6 +102,16 @@ pub fn repoly_toml_from_code_workspace(raw: &str, ws_path: &Path) -> Result<Stri
         // Keep path as written in the workspace file (relative paths preferred)
         let path_escaped = folder.path.replace('\\', "\\\\").replace('"', "\\\"");
         out.push_str(&format!("path = \"{path_escaped}\"\n"));
+
+        let (role, tags) = infer_role_and_tags(&base, &folder.path);
+        if let Some(r) = role {
+            out.push_str(&format!("role = \"{r}\"\n"));
+        }
+        if !tags.is_empty() {
+            let tags_str = tags.iter().map(|t| format!("\"{t}\"")).collect::<Vec<_>>().join(", ");
+            out.push_str(&format!("tags = [{tags_str}]\n"));
+        }
+
         if let Some(name) = &folder.name {
             out.push_str(&format!("description = \"{name}\"\n"));
         }
@@ -109,6 +119,46 @@ pub fn repoly_toml_from_code_workspace(raw: &str, ws_path: &Path) -> Result<Stri
     }
 
     Ok(out)
+}
+
+fn infer_role_and_tags(name: &str, path: &str) -> (Option<String>, Vec<String>) {
+    let n = name.to_lowercase();
+    let p = path.to_lowercase();
+
+    let mut role = None;
+    let mut tags = Vec::new();
+
+    if n.contains("api") || n.contains("core") || p.contains("core") {
+        role = Some("api".to_string());
+        tags.extend(vec!["backend".to_string(), "api".to_string()]);
+    } else if n.contains("web") || n.contains("app") || n.contains("dashboard") || n.contains("frontend") {
+        role = Some("frontend".to_string());
+        tags.extend(vec!["frontend".to_string()]);
+    } else if n.contains("bot") || n.contains("discord") {
+        role = Some("bot".to_string());
+        tags.extend(vec!["bot".to_string(), "discord".to_string()]);
+    } else if n.contains("agent") || n.contains("hermit") || n.contains("mind") {
+        role = Some("agent".to_string());
+        tags.extend(vec!["agent".to_string(), "skills".to_string()]);
+    } else if n.contains("lib") || n.contains("styling") || n.contains("ui") {
+        role = Some("lib".to_string());
+        tags.extend(vec!["lib".to_string(), "ui".to_string()]);
+    } else if n.contains("meta") || n.contains("docs") {
+        role = Some("meta".to_string());
+        tags.extend(vec!["docs".to_string(), "meta".to_string()]);
+    }
+
+    if n.contains("auth") || n.contains("identity") || n.contains("login") {
+        tags.push("auth".to_string());
+    }
+    if n.contains("payment") || n.contains("mollie") {
+        tags.push("payments".to_string());
+    }
+    if n.contains("memory") || n.contains("vault") {
+        tags.push("memory".to_string());
+    }
+
+    (role, tags)
 }
 
 fn slugify(s: &str) -> String {
@@ -159,5 +209,23 @@ mod tests {
     fn slugify_basic() {
         assert_eq!(slugify("Alphapy-Dashboard"), "alphapy_dashboard");
         assert_eq!(slugify("INNERSYNC_STYLING"), "innersync_styling");
+    }
+}
+
+#[cfg(test)]
+mod infer_tests {
+    use super::*;
+
+    #[test]
+    fn infers_api_role() {
+        let (role, tags) = infer_role_and_tags("Core API", "./Innersync_Core");
+        assert_eq!(role, Some("api".to_string()));
+        assert!(tags.contains(&"backend".to_string()));
+    }
+
+    #[test]
+    fn infers_agent_role() {
+        let (role, tags) = infer_role_and_tags("Hermit", "./Hermit");
+        assert_eq!(role, Some("agent".to_string()));
     }
 }

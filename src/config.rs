@@ -404,6 +404,7 @@ path = "./b"
     }
 }
 
+#[allow(clippy::items_after_test_module)]
 impl From<&str> for AlwaysDoc {
     fn from(s: &str) -> Self {
         AlwaysDoc::Path(s.to_string())

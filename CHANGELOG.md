@@ -7,16 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-11
+
 ### Added
 
+- **Smart Always-Docs (B+C)** — richer always-doc packing: optional tags, section extraction, priority ordering for work-mode packs
 - **`ctx` / `plan` `--format grok`** (CLI + MCP `format=grok`) — Grok-oriented briefs with Instructions + Next
 - **Plan status polish** — `status_summary` banner; structured `status` on each step (JSON); dirty/missing hints in suggested commands
 - **Query normalize / rewrite** — stopword strip, built-in phrase rewrites, optional `[[ranking.rewrites]]` (`match` + `add`); `query_normalized` on plan JSON
 - **`repoly doctor` untracked-repo suggestions** — shallow scan of workspace root for sibling git dirs not in `repoly.toml` (`info` only, with suggested `[[repos]]` line)
+- **`init --from-code-workspace` role + tags inference** — heuristic `role` / `tags` from folder names and paths
 
 ### Changed
 
 - Plan default suggested ctx command uses `--format grok`
+- Docs/examples/skill prefer `format=grok` in the agent workflow
+
+### Fixed
+
+- Innersync example context budget settings (realistic `max_chars` / reserve / always caps)
+- Naming-schema propagation matching for the meta repo in the Innersync example
 
 ## [0.2.2] — 2026-07-17
 
@@ -111,7 +121,8 @@ First **public** release of `repoly` (internal dogfood history through 0.10.x is
 - Binary distribution: GitHub Releases on `v*` tags (macOS arm/x64, Linux x64, Windows x64).
 - crates.io: `cargo install repoly` after publish.
 
-[Unreleased]: https://github.com/bryntje/repoly/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/bryntje/repoly/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/bryntje/repoly/releases/tag/v0.3.0
 [0.2.2]: https://github.com/bryntje/repoly/releases/tag/v0.2.2
 [0.2.1]: https://github.com/bryntje/repoly/releases/tag/v0.2.1
 [0.2.0]: https://github.com/bryntje/repoly/releases/tag/v0.2.0

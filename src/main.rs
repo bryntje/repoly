@@ -79,7 +79,7 @@ fn run_cli() -> Result<ExitCode> {
                 }
             }
             for doc in &workspace.context.always {
-                let p = workspace.root.join(doc);
+                let p = workspace.root.join(doc.path());
                 if !p.exists() {
                     eprintln!("warning: always-doc missing: {}", p.display());
                     if strict {

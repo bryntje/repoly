@@ -14,8 +14,15 @@ always = [
   "Innersync-meta/NAMING-SCHEMA.md",
 ]
 status_doc = "Innersync-meta/CROSS-REPOStatus.md"
-# Large always-docs; raise if you want fuller packs
-max_chars = 48000
+
+# === Context budget fixes voor realistische Innersync packs ===
+max_chars = 120000
+
+# Reserveer 35% van het budget voor geselecteerde repo's (work mode)
+repo_reserve_pct = 35
+
+# Hard cap op always-docs zodat er altijd ruimte overblijft voor repo files
+always_max_chars = 45000
 
 # ── Cross-repo docs ─────────────────────────────────────────────────────────
 

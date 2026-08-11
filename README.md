@@ -72,8 +72,8 @@ Use the bundled minimal workspace:
 cd examples/minimal
 repoly validate
 repoly list
-repoly plan "oauth"
-repoly ctx --format prompt "payments" | head
+repoly plan --format grok "oauth"
+repoly ctx --format grok "payments" | head
 ```
 
 Typical flow on your own stack:
@@ -84,8 +84,9 @@ repoly init                  # or: repoly init --from-code-workspace App.code-wo
 # edit repoly.toml → point paths at your repos, add tags / depends_on
 
 repoly status
-repoly plan "login checkout"
-repoly ctx --format prompt "login checkout" > /tmp/brief.md
+repoly plan --format grok "login checkout"
+repoly ctx --format grok "login checkout" > /tmp/brief.md
+repoly doctor   # paths, budget, optional untracked sibling git dirs
 ```
 
 Then open a coding agent **in one repo**:

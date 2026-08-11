@@ -110,6 +110,65 @@ fn plan_orders_api_before_web() {
     let i_api = ids.iter().position(|x| *x == "api").expect("api");
     let i_web = ids.iter().position(|x| *x == "web").expect("web");
     assert!(i_api < i_web, "api should come before web: {ids:?}");
+    // --no-status omits summary and structured status
+    assert!(v["status_summary"].is_null());
+    assert!(steps[0]["status"].is_null());
+}
+
+#[test]
+fn plan_status_summary_and_structured_fields() {
+    let fx = WorkspaceFixture::basic();
+    fx.dirty_web();
+    let out = repoly_cmd()
+        .args(["plan", "oauth", "--format", "json", "--config"])
+        .arg(fx.config())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert!(v["status_summary"]["dirty"].as_u64().unwrap() >= 1);
+    let steps = v["steps"].as_array().unwrap();
+    let web = steps.iter().find(|s| s["id"] == "web").expect("web step");
+    assert_eq!(web["status"]["dirty"], true);
+    assert!(web["status_line"].as_str().unwrap().contains("dirty"));
+}
+
+#[test]
+fn plan_and_ctx_format_grok() {
+    let fx = WorkspaceFixture::basic();
+    repoly_cmd()
+        .args([
+            "plan",
+            "oauth",
+            "--format",
+            "grok",
+            "--no-status",
+            "--config",
+        ])
+        .arg(fx.config())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("repoly plan for Grok"))
+        .stdout(predicate::str::contains("## Instructions"))
+        .stdout(predicate::str::contains("## Next"));
+
+    repoly_cmd()
+        .args([
+            "ctx",
+            "oauth",
+            "--format",
+            "grok",
+            "--no-status",
+            "--config",
+        ])
+        .arg(fx.config())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("repoly context for Grok"))
+        .stdout(predicate::str::contains("## Instructions"))
+        .stdout(predicate::str::contains("Shared always-doc"));
 }
 
 #[test]
@@ -129,6 +188,27 @@ fn ctx_includes_always_doc_and_selection() {
         .success()
         .stdout(predicate::str::contains("Shared always-doc"))
         .stdout(predicate::str::contains("Selected:"));
+}
+
+#[test]
+fn doctor_suggests_untracked_git_dir() {
+    let fx = WorkspaceFixture::basic();
+    // Extra sibling not in repoly.toml
+    let extra = fx.path().join("orphan-svc");
+    std::fs::create_dir_all(&extra).unwrap();
+    Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&extra)
+        .status()
+        .unwrap();
+
+    repoly_cmd()
+        .args(["doctor", "--config"])
+        .arg(fx.config())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("orphan-svc"))
+        .stdout(predicate::str::contains("not in repoly.toml"));
 }
 
 #[test]

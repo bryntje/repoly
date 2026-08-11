@@ -10,7 +10,8 @@ When the user works across multiple git repositories (polyrepo / multi-root work
 1. Check for `repoly` on PATH: `repoly version`
 2. Prefer workspace commands from the workspace root (or any subdirectory that can walk up to `repoly.toml`):
    - `repoly status` — branch/dirty overview
-   - `repoly ctx --format prompt "<task>"` — agent-ready brief
+   - `repoly plan --format grok "<task>"` — ordered repos + status snapshot
+   - `repoly ctx --format grok "<task>"` — Grok-oriented brief (`prompt` also works)
    - `repoly list --format json` — repo map
 3. Scope edits to **selected** repos from the context pack unless the user asks otherwise.
 4. Commit only inside the correct product repo. Meta/docs folders are context, not product code.

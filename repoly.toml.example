@@ -10,6 +10,15 @@ always = ["docs/PLATFORM.md"]
 # status_doc = "docs/STATUS.md"
 max_chars = 48000
 
+# Optional plan/ctx ranking tuning
+# [ranking]
+# synonym_groups = [
+#   ["billing", "invoice", "stripe"],
+# ]
+# [[ranking.rewrites]]
+# match = "invoice portal"
+# add = ["billing", "stripe"]
+
 [[repos]]
 id = "api"
 path = "./api"

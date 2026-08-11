@@ -2,7 +2,7 @@
 
 use crate::config::{RepoEntry, Workspace};
 use crate::context;
-use crate::status;
+use crate::status::{self, RepoStatus};
 use anyhow::{bail, Result};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -12,11 +12,46 @@ pub struct WorkPlan {
     pub workspace: String,
     pub root: String,
     pub query: Option<String>,
+    /// Tokens actually used for ranking after normalize/rewrite (debug/agents).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_normalized: Option<QueryNormalized>,
     pub with_deps: bool,
     pub steps: Vec<PlanStep>,
     pub external_deps: Vec<ExternalDep>,
     pub cycle_warning: Option<String>,
+    /// Aggregate live git status across plan steps (omitted when `--no-status`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_summary: Option<PlanStatusSummary>,
     pub suggested: Vec<String>,
+}
+
+/// Snapshot of how the free-text query was rewritten before ranking.
+#[derive(Debug, Clone, Serialize)]
+pub struct QueryNormalized {
+    pub original: String,
+    pub tokens: Vec<String>,
+    pub rewrites_applied: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct PlanStatusSummary {
+    pub dirty: usize,
+    pub behind: usize,
+    pub missing: usize,
+    pub not_git: usize,
+    pub clean: usize,
+}
+
+/// Structured git status for one plan step (JSON / agents).
+#[derive(Debug, Clone, Serialize)]
+pub struct StepStatus {
+    pub exists: bool,
+    pub is_git: bool,
+    pub branch: Option<String>,
+    pub dirty: bool,
+    pub dirty_count: u32,
+    pub ahead: Option<u32>,
+    pub behind: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -33,6 +68,9 @@ pub struct PlanStep {
     pub reasons: Vec<String>,
     pub added_as_dependency: bool,
     pub status_line: Option<String>,
+    /// Structured status; present unless `--no-status`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<StepStatus>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,6 +79,54 @@ pub struct ExternalDep {
     pub from: String,
     /// Dependency id not included in the plan
     pub needs: String,
+}
+
+fn step_status_from(s: &RepoStatus) -> StepStatus {
+    StepStatus {
+        exists: s.exists,
+        is_git: s.is_git,
+        branch: s.branch.clone(),
+        dirty: s.dirty,
+        dirty_count: s.dirty_count,
+        ahead: s.ahead,
+        behind: s.behind,
+    }
+}
+
+fn summarize_statuses(
+    statuses: &HashMap<String, RepoStatus>,
+    step_ids: &[String],
+) -> PlanStatusSummary {
+    let mut sum = PlanStatusSummary::default();
+    for id in step_ids {
+        let Some(s) = statuses.get(id) else {
+            continue;
+        };
+        if !s.exists {
+            sum.missing += 1;
+            continue;
+        }
+        if !s.is_git {
+            sum.not_git += 1;
+            continue;
+        }
+        if s.dirty {
+            sum.dirty += 1;
+        } else {
+            sum.clean += 1;
+        }
+        if s.behind.unwrap_or(0) > 0 {
+            sum.behind += 1;
+        }
+    }
+    sum
+}
+
+fn format_status_summary_line(sum: &PlanStatusSummary) -> String {
+    format!(
+        "Status snapshot: {} dirty · {} behind · {} missing · {} not-git · {} clean",
+        sum.dirty, sum.behind, sum.missing, sum.not_git, sum.clean
+    )
 }
 
 pub fn build_plan(
@@ -120,16 +206,18 @@ pub fn build_plan(
 
     let (ordered, cycle_warning) = topo_sort(&selected);
 
-    let status_map: HashMap<String, String> = if no_status {
-        HashMap::new()
+    let ids: Vec<String> = ordered.iter().map(|r| r.id.clone()).collect();
+    let (status_by_id, status_summary) = if no_status {
+        (HashMap::new(), None)
     } else {
-        let ids: Vec<String> = ordered.iter().map(|r| r.id.clone()).collect();
         let report = status::collect_status(workspace, Some(&ids), false);
-        report
+        let map: HashMap<String, RepoStatus> = report
             .repos
-            .iter()
-            .map(|s| (s.id.clone(), status::one_liner(s)))
-            .collect()
+            .into_iter()
+            .map(|s| (s.id.clone(), s))
+            .collect();
+        let summary = summarize_statuses(&map, &ids);
+        (map, Some(summary))
     };
 
     let steps: Vec<PlanStep> = ordered
@@ -143,6 +231,10 @@ pub fn build_plan(
                 .filter(|d| selected_ids.contains(*d))
                 .cloned()
                 .collect();
+            let (status_line, status) = match status_by_id.get(&repo.id) {
+                Some(s) => (Some(status::one_liner(s)), Some(step_status_from(s))),
+                None => (None, None),
+            };
             PlanStep {
                 order: i + 1,
                 id: repo.id.clone(),
@@ -158,7 +250,8 @@ pub fn build_plan(
                     .cloned()
                     .unwrap_or_else(|| vec!["dependency".into()]),
                 added_as_dependency: added_as_dep.contains(&repo.id),
-                status_line: status_map.get(&repo.id).cloned(),
+                status_line,
+                status,
             }
         })
         .collect();
@@ -171,11 +264,24 @@ pub fn build_plan(
 
     let mut suggested = vec![
         format!(
-            "repoly ctx --repos {order_csv} --format prompt{}",
+            "repoly ctx --repos {order_csv} --format grok{}",
             query.map(|q| format!(" {q:?}")).unwrap_or_default()
         ),
         format!("repoly status --repos {order_csv}"),
     ];
+    if let Some(sum) = &status_summary {
+        if sum.dirty > 0 {
+            suggested.push(
+                "note: one or more plan repos are dirty — consider stash/commit before multi-repo edits"
+                    .into(),
+            );
+        }
+        if sum.missing > 0 {
+            suggested.push(
+                "note: one or more plan repos are missing on disk — run `repoly doctor`".into(),
+            );
+        }
+    }
     for s in &steps {
         if !s.added_as_dependency || s.score > 0 {
             suggested.push(format!(
@@ -185,14 +291,25 @@ pub fn build_plan(
         }
     }
 
+    let query_normalized = query.map(|q| {
+        let n = crate::rank::normalize_query(workspace, q);
+        QueryNormalized {
+            original: n.original,
+            tokens: n.tokens,
+            rewrites_applied: n.rewrites_applied,
+        }
+    });
+
     Ok(WorkPlan {
         workspace: workspace.name.clone(),
         root: workspace.root.display().to_string(),
         query: query.map(|s| s.to_string()),
+        query_normalized,
         with_deps,
         steps,
         external_deps: external,
         cycle_warning,
+        status_summary,
         suggested,
     })
 }
@@ -283,7 +400,21 @@ pub fn format_markdown(plan: &WorkPlan) -> String {
         "- **with_deps:** {}\n",
         if plan.with_deps { "yes" } else { "no" }
     ));
-    out.push_str(&format!("- **steps:** {}\n\n", plan.steps.len()));
+    out.push_str(&format!("- **steps:** {}\n", plan.steps.len()));
+    if let Some(n) = &plan.query_normalized {
+        if !n.rewrites_applied.is_empty() || n.tokens.join(" ") != n.original {
+            out.push_str(&format!("- **query tokens:** {}\n", n.tokens.join(", ")));
+        }
+    }
+    if let Some(sum) = &plan.status_summary {
+        out.push_str(&format!("- **{}**\n", format_status_summary_line(sum)));
+        if sum.dirty > 0 {
+            out.push_str(
+                "- **hint:** dirty repos in plan — stash/commit before multi-repo work if needed\n",
+            );
+        }
+    }
+    out.push('\n');
 
     if let Some(w) = &plan.cycle_warning {
         out.push_str(&format!("> **warning:** {w}\n\n"));
@@ -352,9 +483,13 @@ pub fn format_prompt(plan: &WorkPlan) -> String {
         plan.query.as_deref().unwrap_or("(filters)")
     ));
     out.push_str(&format!(
-        "# Workspace: {} @ {}\n\n",
+        "# Workspace: {} @ {}\n",
         plan.workspace, plan.root
     ));
+    if let Some(sum) = &plan.status_summary {
+        out.push_str(&format!("# {}\n", format_status_summary_line(sum)));
+    }
+    out.push('\n');
     out.push_str(
         "Work repos in this order (respect depends_on). Change only these repos unless asked.\n\n",
     );
@@ -383,6 +518,75 @@ pub fn format_prompt(plan: &WorkPlan) -> String {
         }
     }
     out.push_str("\n## Suggested\n");
+    for cmd in &plan.suggested {
+        out.push_str(&format!("- `{cmd}`\n"));
+    }
+    out
+}
+
+/// Grok-oriented plan: workflow instructions + same body as `prompt`.
+pub fn format_grok(plan: &WorkPlan) -> String {
+    let mut out = String::new();
+    out.push_str("# repoly plan for Grok\n");
+    out.push_str(&format!(
+        "# task: {}\n",
+        plan.query.as_deref().unwrap_or("(filters)")
+    ));
+    out.push_str(&format!(
+        "# workspace: {} @ {}\n",
+        plan.workspace, plan.root
+    ));
+    if let Some(n) = &plan.query_normalized {
+        out.push_str(&format!("# tokens: {}\n", n.tokens.join(", ")));
+        if !n.rewrites_applied.is_empty() {
+            out.push_str(&format!("# rewrites: {}\n", n.rewrites_applied.join("; ")));
+        }
+    }
+    if let Some(sum) = &plan.status_summary {
+        out.push_str(&format!("# {}\n", format_status_summary_line(sum)));
+        if sum.dirty > 0 {
+            out.push_str("# hint: dirty working trees in plan — stash/commit if multi-repo edits risk conflict\n");
+        }
+        if sum.missing > 0 {
+            out.push_str("# hint: missing repo paths — run `repoly doctor`\n");
+        }
+    }
+    out.push('\n');
+
+    out.push_str("## Instructions\n");
+    out.push_str("- Work repos in **execution order** below (respect depends_on).\n");
+    out.push_str("- Change only these repos unless the user expands scope.\n");
+    out.push_str(
+        "- Next: `repoly ctx --format grok --repos <ordered ids>` (or MCP `build_context`).\n",
+    );
+    out.push_str("- Commit per product repo; meta/docs are context, not product code.\n\n");
+
+    out.push_str("## Execution order\n\n");
+    for s in &plan.steps {
+        let role = s.role.as_deref().unwrap_or("-");
+        let st = s.status_line.as_deref().unwrap_or("?");
+        let dep = if s.added_as_dependency { " [dep]" } else { "" };
+        out.push_str(&format!(
+            "{}. {} ({role}) [{st}]{dep}\n   path: {}\n",
+            s.order, s.id, s.path
+        ));
+        if !s.depends_on_in_plan.is_empty() {
+            out.push_str(&format!("   after: {}\n", s.depends_on_in_plan.join(", ")));
+        }
+        if !s.reasons.is_empty() {
+            out.push_str(&format!("   why: {}\n", s.reasons.join("; ")));
+        }
+    }
+    if let Some(w) = &plan.cycle_warning {
+        out.push_str(&format!("\nWarning: {w}\n"));
+    }
+    if !plan.external_deps.is_empty() {
+        out.push_str("\nMissing deps (not in plan):\n");
+        for e in &plan.external_deps {
+            out.push_str(&format!("- {} → {}\n", e.from, e.needs));
+        }
+    }
+    out.push_str("\n## Next\n");
     for cmd in &plan.suggested {
         out.push_str(&format!("- `{cmd}`\n"));
     }

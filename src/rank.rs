@@ -8,6 +8,98 @@ use std::path::Path;
 /// Max bytes of each context file used for content matching.
 const SNIPPET_BYTES: usize = 12_000;
 
+/// Light stopwords stripped when other tokens remain (ranking only).
+const STOPWORDS: &[&str] = &[
+    "the", "a", "an", "of", "in", "on", "for", "to", "with", "and", "or", "please", "help", "me",
+    "my", "our", "this", "that", "from", "into", "about", "across",
+];
+
+/// Built-in multi-word phrase → extra tokens (before synonym expand).
+fn builtin_rewrites() -> &'static [(&'static str, &'static [&'static str])] {
+    &[
+        ("growth checkin", &["reflections", "journal", "growth"]),
+        ("growth check-in", &["reflections", "journal", "growth"]),
+        ("login flow", &["oauth", "auth", "identity", "login"]),
+        ("sign in", &["oauth", "auth", "login"]),
+        ("sign-in", &["oauth", "auth", "login"]),
+        ("payment flow", &["payments", "billing", "checkout"]),
+        ("pay wall", &["payments", "premium", "billing"]),
+        ("paywall", &["payments", "premium", "billing"]),
+    ]
+}
+
+/// Result of normalizing a free-text query for ranking.
+#[derive(Debug, Clone)]
+pub struct NormalizedQuery {
+    pub original: String,
+    pub tokens: Vec<String>,
+    pub rewrites_applied: Vec<String>,
+}
+
+/// Normalize a query: lowercase, apply phrase rewrites, tokenize, drop stopwords
+/// when other content remains.
+pub fn normalize_query(workspace: &Workspace, query: &str) -> NormalizedQuery {
+    let original = query.trim().to_string();
+    let q = original.to_lowercase();
+    let mut rewrites_applied = Vec::new();
+    let mut injected: Vec<String> = Vec::new();
+
+    // Workspace rewrites first (more specific), then built-ins.
+    for rw in &workspace.ranking.rewrites {
+        let phrase = rw.match_phrase.trim().to_lowercase();
+        if phrase.len() < 2 {
+            continue;
+        }
+        if q.contains(&phrase) {
+            rewrites_applied.push(format!("{phrase}→{}", rw.add.join(",")));
+            for t in &rw.add {
+                let t = t.trim().to_lowercase();
+                if t.len() >= 2 {
+                    push_unique(&mut injected, &t);
+                }
+            }
+        }
+    }
+    for (phrase, add) in builtin_rewrites() {
+        if q.contains(phrase) {
+            rewrites_applied.push(format!("{phrase}→{}", add.join(",")));
+            for t in *add {
+                push_unique(&mut injected, t);
+            }
+        }
+    }
+
+    // Tokenize original query (after lowercasing).
+    let mut tokens: Vec<String> = q
+        .split(|c: char| c.is_whitespace() || c == ',' || c == '/' || c == '|')
+        .map(str::trim)
+        .filter(|t| t.len() >= 2)
+        .map(|t| t.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_'))
+        .filter(|t| t.len() >= 2)
+        .map(|t| t.to_string())
+        .collect();
+
+    for t in injected {
+        push_unique(&mut tokens, &t);
+    }
+
+    // Drop stopwords only if something substantive remains.
+    let filtered: Vec<String> = tokens
+        .iter()
+        .filter(|t| !STOPWORDS.contains(&t.as_str()))
+        .cloned()
+        .collect();
+    if !filtered.is_empty() {
+        tokens = filtered;
+    }
+
+    NormalizedQuery {
+        original,
+        tokens,
+        rewrites_applied,
+    }
+}
+
 /// Expand a query token with built-in synonyms (English polyrepo/product terms).
 pub fn expand_token_builtin(token: &str) -> Vec<String> {
     let t = token.to_lowercase();
@@ -103,20 +195,12 @@ pub struct RankedRepo<'a> {
 
 /// Score all repos for a free-text query. Higher is better.
 pub fn rank_repos<'a>(workspace: &'a Workspace, query: &str) -> Vec<RankedRepo<'a>> {
-    let q = query.trim().to_lowercase();
-    if q.is_empty() {
+    let normalized = normalize_query(workspace, query);
+    if normalized.tokens.is_empty() {
         return Vec::new();
     }
 
-    let original_tokens: Vec<String> = q
-        .split(|c: char| c.is_whitespace() || c == ',' || c == '/')
-        .map(str::trim)
-        .filter(|t| t.len() >= 2)
-        .map(|t| t.to_string())
-        .collect();
-    if original_tokens.is_empty() {
-        return Vec::new();
-    }
+    let original_tokens = &normalized.tokens;
 
     // Always-docs snippet (shared boost signal)
     let always_blob = load_always_blob(workspace);
@@ -406,5 +490,43 @@ mod tests {
         let ids: Vec<_> = ranked.iter().map(|r| r.repo.id.as_str()).collect();
         assert!(ids.contains(&"app"), "{ids:?}");
         assert!(ids.contains(&"hermit"), "{ids:?}");
+    }
+
+    #[test]
+    fn normalize_strips_stopwords() {
+        let w = ws();
+        let n = normalize_query(&w, "please fix the oauth login");
+        assert!(n.tokens.iter().any(|t| t == "oauth"));
+        assert!(n.tokens.iter().any(|t| t == "login") || n.tokens.iter().any(|t| t == "fix"));
+        assert!(!n.tokens.iter().any(|t| t == "please" || t == "the"));
+    }
+
+    #[test]
+    fn builtin_phrase_rewrite_login_flow() {
+        let w = ws();
+        let n = normalize_query(&w, "login flow broken");
+        assert!(
+            n.tokens.iter().any(|t| t == "oauth" || t == "identity"),
+            "expected oauth/identity injected, got {:?}",
+            n.tokens
+        );
+        assert!(!n.rewrites_applied.is_empty());
+    }
+
+    #[test]
+    fn workspace_rewrite_injects_tokens() {
+        use crate::config::RankingRewrite;
+        let mut w = ws();
+        w.ranking.rewrites = vec![RankingRewrite {
+            match_phrase: "invoice portal".into(),
+            add: vec!["stripe".into(), "billing".into()],
+        }];
+        w.repos[0].tags.push("stripe".into());
+        let ranked = rank_repos(&w, "open the invoice portal please");
+        assert!(
+            ranked.iter().any(|r| r.repo.id == "core"),
+            "expected core via rewrite→stripe, got {:?}",
+            ranked.iter().map(|r| &r.repo.id).collect::<Vec<_>>()
+        );
     }
 }

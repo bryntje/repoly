@@ -70,6 +70,10 @@ exec_max_output_bytes = 262144
 # synonym_groups = [
 #   ["billing", "invoice", "stripe"],
 # ]
+# Optional phrase rewrites (inject tokens when phrase appears in the query)
+# [[ranking.rewrites]]
+# match = "invoice portal"
+# add = ["billing", "stripe"]
 ```
 
 Shell for agents (double opt-in). **Bin policy must be inactive** for `shell=true` to work — pass `--no-default-exec-deny` and do not set bin allow/deny lists:
@@ -106,13 +110,13 @@ Same pattern:
 
 ## Agent workflow
 
-1. `plan` with a short task query  
-2. `build_context` (`format=prompt`) for **narrow** selected repos; raise `max_chars` when always-docs are large (often 90000–120000)  
+1. `plan` with a short task query (`format=grok` or `prompt`)  
+2. `build_context` (`format=grok` or `prompt`) for **narrow** selected repos; raise `max_chars` when always-docs are large (often 90000–120000)  
 3. Check pack `budget` / tips — if `repo_files_included` is 0, open AGENTS.md in the target repo yourself  
 4. Edit only those repos  
 5. Optional: `commit` / `exec` if you enabled mutation  
 
-`repoly doctor` on the CLI reports always-doc size vs work-mode budget.
+`repoly doctor` on the CLI reports always-doc size vs work-mode budget and **info** suggestions for sibling git dirs not listed in `repoly.toml`.
 
 ## Safety
 

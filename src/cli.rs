@@ -298,6 +298,8 @@ pub enum CtxFormat {
     #[default]
     Markdown,
     Prompt,
+    /// Grok-oriented brief (workflow instructions + prompt body)
+    Grok,
     Json,
 }
 
@@ -313,5 +315,7 @@ pub enum PlanFormat {
     #[default]
     Markdown,
     Prompt,
+    /// Grok-oriented plan (workflow instructions + prompt body)
+    Grok,
     Json,
 }

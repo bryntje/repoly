@@ -108,7 +108,11 @@ pub fn repoly_toml_from_code_workspace(raw: &str, ws_path: &Path) -> Result<Stri
             out.push_str(&format!("role = \"{r}\"\n"));
         }
         if !tags.is_empty() {
-            let tags_str = tags.iter().map(|t| format!("\"{t}\"")).collect::<Vec<_>>().join(", ");
+            let tags_str = tags
+                .iter()
+                .map(|t| format!("\"{t}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
             out.push_str(&format!("tags = [{tags_str}]\n"));
         }
 
@@ -121,7 +125,7 @@ pub fn repoly_toml_from_code_workspace(raw: &str, ws_path: &Path) -> Result<Stri
     Ok(out)
 }
 
-fn infer_role_and_tags(name: &str, path: &str) -> (Option<String>, Vec<String>) {
+pub(crate) fn infer_role_and_tags(name: &str, path: &str) -> (Option<String>, Vec<String>) {
     let n = name.to_lowercase();
     let p = path.to_lowercase();
 
@@ -131,7 +135,11 @@ fn infer_role_and_tags(name: &str, path: &str) -> (Option<String>, Vec<String>) 
     if n.contains("api") || n.contains("core") || p.contains("core") {
         role = Some("api".to_string());
         tags.extend(vec!["backend".to_string(), "api".to_string()]);
-    } else if n.contains("web") || n.contains("app") || n.contains("dashboard") || n.contains("frontend") {
+    } else if n.contains("web")
+        || n.contains("app")
+        || n.contains("dashboard")
+        || n.contains("frontend")
+    {
         role = Some("frontend".to_string());
         tags.extend(vec!["frontend".to_string()]);
     } else if n.contains("bot") || n.contains("discord") {
@@ -161,7 +169,7 @@ fn infer_role_and_tags(name: &str, path: &str) -> (Option<String>, Vec<String>) 
     (role, tags)
 }
 
-fn slugify(s: &str) -> String {
+pub(crate) fn slugify(s: &str) -> String {
     let lower = s.to_lowercase();
     let mut out = String::new();
     let mut prev_dash = false;
@@ -225,7 +233,7 @@ mod infer_tests {
 
     #[test]
     fn infers_agent_role() {
-        let (role, tags) = infer_role_and_tags("Hermit", "./Hermit");
+        let (role, _tags) = infer_role_and_tags("Hermit", "./Hermit");
         assert_eq!(role, Some("agent".to_string()));
     }
 }

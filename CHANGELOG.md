@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`ctx` / `plan` `--format grok`** (CLI + MCP `format=grok`) — Grok-oriented briefs with Instructions + Next
+- **Plan status polish** — `status_summary` banner; structured `status` on each step (JSON); dirty/missing hints in suggested commands
+- **Query normalize / rewrite** — stopword strip, built-in phrase rewrites, optional `[[ranking.rewrites]]` (`match` + `add`); `query_normalized` on plan JSON
+- **`repoly doctor` untracked-repo suggestions** — shallow scan of workspace root for sibling git dirs not in `repoly.toml` (`info` only, with suggested `[[repos]]` line)
+
+### Changed
+
+- Plan default suggested ctx command uses `--format grok`
+
 ## [0.2.2] — 2026-07-17
 
 ### Added

@@ -325,7 +325,7 @@ struct CtxArgs {
     /// Filter by role (e.g. "api", "frontend").
     #[serde(default)]
     role: Option<String>,
-    /// Output format: "prompt" (default), "markdown", or "json".
+    /// Output format: "prompt" (default), "markdown", "grok", or "json".
     #[serde(default)]
     format: Option<String>,
     /// Max characters for the pack.
@@ -362,7 +362,7 @@ struct PlanArgs {
     /// Skip expanding depends_on.
     #[serde(default)]
     no_deps: Option<bool>,
-    /// Output format: prompt (default), markdown, or json.
+    /// Output format: prompt (default), markdown, grok, or json.
     #[serde(default)]
     format: Option<String>,
     /// Skip live git status.
@@ -481,7 +481,7 @@ impl RepolyMcp {
 
     #[tool(
         name = "build_context",
-        description = "Build a cross-repo context pack for a task (always-docs + selected repo AGENTS/README + status). Prefer format=prompt for agent consumption."
+        description = "Build a cross-repo context pack for a task (always-docs + selected repo AGENTS/README + status). Prefer format=grok or format=prompt for agent consumption."
     )]
     async fn build_context(
         &self,
@@ -504,6 +504,7 @@ impl RepolyMcp {
         match format {
             "json" => Ok(serde_json::to_string_pretty(&pack).unwrap_or_default()),
             "markdown" | "md" => Ok(context::format_markdown(&pack)),
+            "grok" => Ok(context::format_grok(&pack)),
             _ => Ok(context::format_prompt(&pack)),
         }
     }
@@ -545,7 +546,7 @@ impl RepolyMcp {
 
     #[tool(
         name = "plan",
-        description = "Suggest which repos to touch for a task and the depends_on execution order. Call before multi-repo work; then build_context with the ordered repos."
+        description = "Suggest which repos to touch for a task and the depends_on execution order (includes live git status summary unless no_status). Call before multi-repo work; then build_context with the ordered repos. Prefer format=grok for Grok agents."
     )]
     async fn plan_work(&self, Parameters(args): Parameters<PlanArgs>) -> Result<String, McpError> {
         let ws = self.load_ws()?;
@@ -564,6 +565,7 @@ impl RepolyMcp {
         match format {
             "json" => Ok(serde_json::to_string_pretty(&work).unwrap_or_default()),
             "markdown" | "md" => Ok(plan::format_markdown(&work)),
+            "grok" => Ok(plan::format_grok(&work)),
             _ => Ok(plan::format_prompt(&work)),
         }
     }

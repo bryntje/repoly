@@ -850,6 +850,63 @@ pub fn format_prompt(pack: &ContextPack) -> String {
     out
 }
 
+/// Grok-oriented context pack: same body as `prompt`, with explicit agent workflow.
+pub fn format_grok(pack: &ContextPack) -> String {
+    let mut out = String::new();
+    out.push_str("# repoly context for Grok\n");
+    out.push_str(&format!(
+        "# workspace: {} @ {}\n",
+        pack.workspace, pack.root
+    ));
+    if let Some(q) = &pack.query {
+        out.push_str(&format!("# query: {q}\n"));
+    }
+    out.push_str(&format!("# selected: {}\n", pack.selected_repos.join(", ")));
+    out.push_str(&budget_header(pack));
+
+    out.push_str("## Instructions\n");
+    out.push_str("- Edit only **selected** repos unless the user expands scope.\n");
+    out.push_str(
+        "- Workflow: `repoly plan --format grok \"…\"` → this pack → edit → commit per repo.\n",
+    );
+    out.push_str("- MCP twin: `plan(format=grok)` then `build_context(format=grok, repos=…)`.\n");
+    out.push_str("- Paths below are absolute; use them as cwd anchors.\n");
+    out.push_str(
+        "- Commit in the product repo that owns the change; meta/docs are context only.\n\n",
+    );
+
+    // Reuse section body from format_prompt (skip its header + generic "How to work").
+    let body = format_prompt(pack);
+    let mut sections = if let Some(idx) = body.find("## ") {
+        body[idx..].to_string()
+    } else {
+        body
+    };
+    if let Some(hw) = sections.find("## How to work") {
+        sections.truncate(hw);
+    }
+    out.push_str(&sections);
+
+    out.push_str("## Next\n");
+    if !pack.selected_repos.is_empty() {
+        let csv = pack.selected_repos.join(",");
+        out.push_str(&format!("- `repoly status --repos {csv}`\n"));
+        for id in &pack.selected_repos {
+            out.push_str(&format!("- work in `{id}` only unless asked otherwise\n"));
+        }
+    }
+    if pack.truncated {
+        out.push_str("- Pack was truncated — narrow query or raise `--max-chars`.\n");
+    }
+    if pack.budget.repo_files_included == 0 && !pack.selected_repos.is_empty() {
+        out.push_str(
+            "- No per-repo AGENTS/README fit in budget; open those files in the target repos.\n",
+        );
+    }
+    out.push('\n');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,9 +2,36 @@
 
 use crate::config::Workspace;
 use crate::context::{self, measure_always_on_disk, measure_status_on_disk};
+use crate::discover;
 use serde::Serialize;
-use std::path::Path;
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Max untracked sibling suggestions (keep doctor output bounded).
+const MAX_UNTRACKED_SUGGESTIONS: usize = 50;
+
+/// Directory names never suggested as missing repos.
+const SKIP_DIR_NAMES: &[&str] = &[
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "vendor",
+    "coverage",
+    ".idea",
+    ".vscode",
+    ".cursor",
+    ".repoly",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -86,6 +113,11 @@ pub fn run(workspace: &Workspace, config_path: &Path) -> DoctorReport {
             code: "depends_on".into(),
             message: w,
         });
+    }
+
+    // Sibling git dirs not listed in repoly.toml (info only — never auto-mutate)
+    for c in suggest_untracked_repos(workspace) {
+        checks.push(c);
     }
 
     // Always-docs
@@ -262,6 +294,138 @@ pub fn run(workspace: &Workspace, config_path: &Path) -> DoctorReport {
     }
 }
 
+/// Scan workspace root (depth 1) for git checkouts not declared in config.
+fn suggest_untracked_repos(workspace: &Workspace) -> Vec<Check> {
+    let mut checks = Vec::new();
+    let configured = configured_path_keys(workspace);
+
+    let Ok(entries) = fs::read_dir(&workspace.root) else {
+        checks.push(Check {
+            severity: Severity::Warn,
+            code: "scan_root".into(),
+            message: format!(
+                "could not read workspace root for untracked-repo scan: {}",
+                workspace.root.display()
+            ),
+        });
+        return checks;
+    };
+
+    let mut found = 0usize;
+    let mut dirs: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+
+    for dir in dirs {
+        if found >= MAX_UNTRACKED_SUGGESTIONS {
+            checks.push(Check {
+                severity: Severity::Info,
+                code: "untracked_repo_truncated".into(),
+                message: format!(
+                    "untracked-repo scan stopped after {MAX_UNTRACKED_SUGGESTIONS} suggestions"
+                ),
+            });
+            break;
+        }
+
+        let Some(name) = dir.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if name.starts_with('.') || SKIP_DIR_NAMES.contains(&name) {
+            continue;
+        }
+        if !dir.join(".git").exists() {
+            continue;
+        }
+
+        // Path as it would appear relative to workspace root
+        let rel = format!("./{name}");
+        let keys = path_match_keys(&dir, name, &rel);
+        if keys.iter().any(|k| configured.contains(k)) {
+            continue;
+        }
+
+        let id = discover::slugify(name);
+        let id = if id.is_empty() {
+            "repo".to_string()
+        } else {
+            id
+        };
+        let (role, tags) = discover::infer_role_and_tags(name, &rel);
+        let mut suggest = format!("[[repos]] id = \"{id}\" path = \"{rel}\"");
+        if let Some(r) = role {
+            suggest.push_str(&format!(" role = \"{r}\""));
+        }
+        if !tags.is_empty() {
+            let t = tags
+                .iter()
+                .map(|t| format!("\"{t}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            suggest.push_str(&format!(" tags = [{t}]"));
+        }
+
+        checks.push(Check {
+            severity: Severity::Info,
+            code: "untracked_repo".into(),
+            message: format!("git dir '{name}' not in repoly.toml — suggest: {suggest}"),
+        });
+        found += 1;
+    }
+
+    if found == 0 {
+        // Only emit ok when we successfully scanned and found nothing new
+        if workspace.root.is_dir() {
+            checks.push(Check {
+                severity: Severity::Ok,
+                code: "untracked_repos".into(),
+                message: "no untracked sibling git dirs under workspace root".into(),
+            });
+        }
+    }
+
+    checks
+}
+
+fn configured_path_keys(workspace: &Workspace) -> HashSet<String> {
+    let mut set = HashSet::new();
+    for repo in &workspace.repos {
+        set.insert(normalize_key(&repo.id));
+        set.insert(normalize_key(&repo.path));
+        // basename of path
+        if let Some(base) = Path::new(&repo.path).file_name().and_then(|s| s.to_str()) {
+            set.insert(normalize_key(base));
+        }
+        let abs = workspace.repo_path(repo);
+        if let Ok(canon) = abs.canonicalize() {
+            set.insert(normalize_key(&canon.to_string_lossy()));
+        }
+        set.insert(normalize_key(&abs.to_string_lossy()));
+    }
+    set
+}
+
+fn path_match_keys(dir: &Path, name: &str, rel: &str) -> Vec<String> {
+    let mut keys = vec![
+        normalize_key(name),
+        normalize_key(rel),
+        normalize_key(&dir.to_string_lossy()),
+    ];
+    if let Ok(canon) = dir.canonicalize() {
+        keys.push(normalize_key(&canon.to_string_lossy()));
+    }
+    keys
+}
+
+fn normalize_key(s: &str) -> String {
+    let s = s.trim().trim_start_matches("./").trim_end_matches('/');
+    // macOS default FS is case-insensitive; fold for matching
+    s.replace('\\', "/").to_lowercase()
+}
+
 pub fn format_human(report: &DoctorReport) -> String {
     let mut out = String::new();
     out.push_str(&format!(
@@ -289,4 +453,73 @@ pub fn format_human(report: &DoctorReport) -> String {
         out.push_str("result: PASS\n");
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ContextSection, RepoEntry, Workspace};
+    use std::fs;
+    use std::process::Command;
+    use tempfile::tempdir;
+
+    fn init_git(dir: &Path) {
+        let _ = Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(dir)
+            .status();
+    }
+
+    #[test]
+    fn suggests_untracked_sibling_git_dir() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        // configured repo
+        let api = root.join("api");
+        fs::create_dir_all(&api).unwrap();
+        init_git(&api);
+        // untracked sibling
+        let extra = root.join("payments-svc");
+        fs::create_dir_all(&extra).unwrap();
+        init_git(&extra);
+        // junk (no git)
+        fs::create_dir_all(root.join("node_modules")).unwrap();
+
+        let ws = Workspace {
+            name: "t".into(),
+            root: root.to_path_buf(),
+            config_path: root.join("repoly.toml"),
+            context: ContextSection::default(),
+            policy: Default::default(),
+            ranking: Default::default(),
+            repos: vec![RepoEntry {
+                id: "api".into(),
+                path: "./api".into(),
+                role: Some("api".into()),
+                tags: vec![],
+                depends_on: vec![],
+                description: None,
+                context_files: None,
+            }],
+        };
+
+        let checks = suggest_untracked_repos(&ws);
+        let msgs: Vec<_> = checks.iter().map(|c| c.message.as_str()).collect();
+        assert!(
+            checks.iter().any(|c| c.code == "untracked_repo"
+                && c.severity == Severity::Info
+                && c.message.contains("payments-svc")),
+            "expected untracked_repo for payments-svc, got {msgs:?}"
+        );
+        assert!(
+            !checks.iter().any(|c| c.message.contains("node_modules")),
+            "should skip node_modules"
+        );
+        assert!(
+            !checks
+                .iter()
+                .any(|c| c.code == "untracked_repo" && c.message.contains("'api'")),
+            "configured api must not be suggested"
+        );
+    }
 }

@@ -152,10 +152,12 @@ fn default_true() -> bool {
     true
 }
 
-/// Optional `[ranking]` — workspace-specific synonym groups for plan/ctx queries.
+/// Optional `[ranking]` — workspace-specific synonym groups + phrase rewrites for plan/ctx.
 ///
-/// Each group is a list of equivalent terms: if the query hits any member, all
+/// Each synonym group is a list of equivalent terms: if the query hits any member, all
 /// members are used as match variants (merged with built-in expand_token).
+///
+/// Phrase rewrites inject extra tokens when a multi-word (or single) match appears:
 ///
 /// ```toml
 /// [ranking]
@@ -163,11 +165,30 @@ fn default_true() -> bool {
 ///   ["reflection", "reflections", "growth", "checkin"],
 ///   ["billing", "invoice", "stripe"],
 /// ]
+///
+/// [[ranking.rewrites]]
+/// match = "growth checkin"
+/// add = ["reflections", "journal"]
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RankingSection {
     #[serde(default)]
     pub synonym_groups: Vec<Vec<String>>,
+    /// Phrase → extra tokens before ranking (merged with built-in rewrites).
+    #[serde(default)]
+    pub rewrites: Vec<RankingRewrite>,
+}
+
+/// One query rewrite rule: if `match` appears in the query (case-insensitive),
+/// inject `add` tokens into the ranking token list.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RankingRewrite {
+    /// Substring or phrase to detect (lowercased at match time).
+    #[serde(rename = "match")]
+    pub match_phrase: String,
+    /// Extra tokens to add when the phrase matches.
+    #[serde(default)]
+    pub add: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

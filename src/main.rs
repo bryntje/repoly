@@ -197,6 +197,7 @@ fn run_cli() -> Result<ExitCode> {
             match format {
                 PlanFormat::Markdown => print!("{}", plan::format_markdown(&work)),
                 PlanFormat::Prompt => print!("{}", plan::format_prompt(&work)),
+                PlanFormat::Grok => print!("{}", plan::format_grok(&work)),
                 PlanFormat::Json => println!("{}", serde_json::to_string_pretty(&work)?),
             }
             Ok(ExitCode::SUCCESS)
@@ -226,6 +227,7 @@ fn run_cli() -> Result<ExitCode> {
             match format {
                 CtxFormat::Markdown => print!("{}", context::format_markdown(&pack)),
                 CtxFormat::Prompt => print!("{}", context::format_prompt(&pack)),
+                CtxFormat::Grok => print!("{}", context::format_grok(&pack)),
                 CtxFormat::Json => println!("{}", serde_json::to_string_pretty(&pack)?),
             }
             Ok(ExitCode::SUCCESS)

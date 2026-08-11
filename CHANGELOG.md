@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`repoly doctor` ctx smoke** uses the workspace `max_chars` (no silent 64k cap) so budget tips match real `ctx` / `build_context`
+
 ## [0.3.0] — 2026-08-11
 
 ### Added

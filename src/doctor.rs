@@ -236,18 +236,20 @@ pub fn run(workspace: &Workspace, config_path: &Path) -> DoctorReport {
             .into(),
     });
 
-    // Smoke: can we build a pack for the first repo?
+    // Smoke: build a pack with the workspace's real max_chars (same budget as `repoly ctx`).
+    // Previously capped at 64k, which produced false "always exceed budget" tips when
+    // the config used a larger max_chars (e.g. 96k–120k).
     if missing == 0 {
         let first_id = workspace.repos.first().map(|r| r.id.clone());
         if let Some(id) = first_id {
-            let ids = vec![id];
+            let ids = vec![id.clone()];
             if let Ok(pack) = context::build_context(
                 workspace,
                 None,
                 Some(&ids),
                 None,
                 None,
-                Some(max_chars.min(64_000)),
+                Some(max_chars),
                 true,
                 false,
             ) {
@@ -255,7 +257,7 @@ pub fn run(workspace: &Workspace, config_path: &Path) -> DoctorReport {
                     severity: Severity::Ok,
                     code: "ctx_smoke".into(),
                     message: format!(
-                        "ctx smoke ok · always {}/{} · repo_files {} · tips {}",
+                        "ctx smoke ok · max_chars={max_chars} · always {}/{} · repo_files {} · tips {}",
                         pack.budget.always_bytes,
                         pack.budget.always_cap,
                         pack.budget.repo_files_included,
@@ -269,6 +271,12 @@ pub fn run(workspace: &Workspace, config_path: &Path) -> DoctorReport {
                         message: tip.clone(),
                     });
                 }
+            } else {
+                checks.push(Check {
+                    severity: Severity::Warn,
+                    code: "ctx_smoke".into(),
+                    message: format!("ctx smoke failed for repo '{id}' with max_chars={max_chars}"),
+                });
             }
         }
     }
